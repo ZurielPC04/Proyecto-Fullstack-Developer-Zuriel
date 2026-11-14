@@ -366,6 +366,7 @@ Decisiones cerradas durante el interrogatorio previo a `requirements.md`. Todos 
   - El intento en vuelo, es decir la llave y el cuerpo, se guarda en `sessionStorage` hasta que se resuelve. No contiene tokens (D-06).
   - Al recargar, la app muestra "Verificando operación anterior…" y reenvía con la misma llave antes de permitir otro envío.
 - Al cerrar sesión se borra el intento guardado en `sessionStorage`.
+- _Precisada durante la fase de diseño (DD-32 de `design.md` §6.2):_ el intento guardado registra su fase, `creacion` o `confirmacion`. Si se interrumpe una confirmación, se reintenta la confirmación y no la creación. Un `202` recibido por reintento o por recarga se contrasta con `GET /transferencias/{id}` antes de pedir el código.
 - **Pruebas con Testing Library:**
   - simular doble clic y Enter, y verificar que sale una sola petición;
   - verificar que al cerrar sesión se borra el intento guardado.
@@ -394,6 +395,7 @@ Decisiones cerradas durante el interrogatorio previo a `requirements.md`. Todos 
 - **Si se agotan los reintentos:** la pantalla muestra "Estado desconocido" con un solo botón, "Verificar de nuevo", que usa la misma llave. No se puede iniciar otra transferencia mientras haya un intento sin resolver.
 - **Al abrir la app con un intento pendiente,** primero se resuelve y después se muestra el saldo.
 - **Estados finales:** `201` muestra el comprobante, `202` la captura del código y `422` el rechazo con su motivo. Después se borra el intento.
+- _Precisada durante la fase de diseño (DD-32 de `design.md` §6.2):_ el intento guardado registra su fase, `creacion` o `confirmacion`. Si se pierde la red al confirmar, se reintenta `POST /transferencias/{id}/confirmar` (idempotente por D-07), nunca la creación. Un `202` recibido por reintento o al reabrir la app no lleva directo a la captura del código: primero se consulta `GET /transferencias/{id}` para mostrar el estado real (aplicada, rechazada o pendiente).
 - **Demostración en el video:**
   - `DEMO_LATENCIA_MS`, una variable solo de desarrollo, hace que la API espere después de confirmar la transacción y antes de responder. Así se puede activar el modo avión justo en ese momento.
   - La API se niega a arrancar si esa variable está activa con `NODE_ENV=production`.

@@ -1026,7 +1026,7 @@ Todas las rutas van bajo `/api`. 🔒 indica que exigen access token.
 | Método y ruta | 🔒 | Rate limit | Éxito | Errores propios | Requisitos |
 |---|---|---|---|---|---|
 | `GET /health` | | | `200` | `503` | — |
-| `POST /auth/registro` | | ✓ (§11) | `201` | `400`, `409`, `429` | R-1.1 a R-1.5, R-1.18 |
+| `POST /auth/registro` | | ✓ (§11) | `201` | `400`, `409`, `429`, `503` | R-1.1 a R-1.5, R-1.18 |
 | `POST /auth/login` | | ✓ (§11) | `200` + cookie o `refreshToken` | `400`, `401`, `429` | R-1.6, R-1.7, R-1.13, R-1.18 |
 | `POST /auth/refresh` | | | `200` | `400`, `401` | R-1.8 a R-1.10, R-1.14 a R-1.17 |
 | `POST /auth/logout` | | | `204` | `400` | R-1.12 |
@@ -1107,5 +1107,454 @@ Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
 > **Contexto:** RNF-18 pide tipos generados desde el contrato, pero un contrato que el servidor no cumple genera tipos que mienten.
 > **Decisión:** las cuatro verificaciones anteriores (diff de tipos generados, prueba de tipos de Zod, validación de respuestas con Ajv y `redocly lint`) corren en CI. Swagger UI no se monta en producción.
 > **Motivo:** cada una cierra un camino distinto por el que el contrato puede mentir: tipos viejos, Zod desviado, servidor desviado y documento inválido. En producción, publicar el contrato completo solo amplía la superficie de reconocimiento sin beneficio para el usuario; los equipos lo consultan en el repositorio.
+
+---
+
+## 5. Autenticación y sesión
+
+### 5.1 Contraseñas
+
+**Política** (cierra el pendiente §12.1 de `requirements.md`). La valida el esquema Zod de `shared` en web y en la API:
+
+| Regla | Valor |
+|---|---|
+| Longitud | 12 a 128 caracteres, contados después de normalizar a Unicode NFC |
+| Composición | Sin reglas de mayúsculas, números ni símbolos |
+| Prohibidas | La contraseña igual al correo, o igual a la parte local del correo, sin distinguir mayúsculas; y las de una lista de 1,000 contraseñas comunes incluida en `api` |
+| Espacios | Permitidos, sin recortar: la contraseña se usa tal como se escribió |
+
+**Hash.** argon2id con `memoryCost = 19456` KiB (19 MiB), `timeCost = 2` y `parallelism = 1`, el mínimo que recomienda OWASP para argon2id. El hash en formato PHC (`$argon2id$v=19$m=19456,t=2,p=1$…`) lleva sus parámetros, así que se pueden subir en el futuro sin romper los hashes existentes.
+
+**Login sin revelar el correo (R-1.7).** Si el correo no existe, la API verifica igual la contraseña contra un hash ficticio calculado al arrancar con los mismos parámetros. Así, un correo inexistente y una contraseña incorrecta tardan lo mismo y responden el mismo `401`.
+
+> **DD-28 · Aprobada · Política de contraseñas y parámetros de argon2id (cierra §12.1)**
+> **Contexto:** RNF-03 pide argon2 o bcrypt, y R-1.5 pide validar la contraseña, pero no hay política.
+> **Opciones:** (1) reglas de composición clásicas (mayúscula, número, símbolo); (2) longitud mínima y lista de contraseñas comunes, como recomienda NIST SP 800-63B.
+> **Decisión:** la opción 2, con los valores de la tabla. argon2id con los parámetros mínimos de OWASP. Normalización NFC antes de validar y de calcular el hash. Máximo de 128 caracteres. Hash ficticio en el login para igualar tiempos.
+> **Motivo:** las reglas de composición producen contraseñas predecibles (`Contraseña1!`) sin añadir entropía real; la longitud sí la añade. NFC evita que la misma contraseña escrita en dos teclados (un acento compuesto o precompuesto) produzca hashes distintos. El tope de 128 acota el costo de cada hash, para que no se pueda saturar la API con contraseñas enormes. Sin el hash ficticio, el tiempo de respuesta revelaría qué correos existen, aunque el cuerpo sea idéntico.
+> **Fuera de alcance:** volver a calcular el hash al subir los parámetros. Exigiría `UPDATE` sobre `hash_contrasena`, que el rol de la API no tiene (DD-18). Va en "qué haría con más tiempo".
+
+### 5.2 Access token
+
+| Aspecto | Valor |
+|---|---|
+| Formato | JWT firmado con HS256 y `JWT_SECRETO` (32 bytes o más, §2.4) |
+| Claims | `sub` (id del usuario), `iat`, `exp` (15 minutos, D-05), `iss = "billetera-api"`, `aud = "billetera"` |
+| Verificación | `jose.jwtVerify` con `algorithms: ['HS256']`, `issuer`, `audience` y tolerancia de reloj de 5 s |
+| Transporte | `Authorization: Bearer …`, nunca en cookie |
+| Almacenamiento | En memoria, en web y en móvil (D-06) |
+
+El middleware `autenticar` **no consulta la base**: verifica firma y claims y pone `req.usuarioId`. Cualquier fallo (sin header, mal formado, firma inválida, vencido) responde el mismo `401 unauthorized` (R-1.11).
+
+**Un access token no se puede revocar.** Cerrar sesión revoca la familia de refresh, pero un access ya emitido sigue siendo válido hasta 15 minutos. Es el costo aceptado de no consultar la base en cada petición.
+
+> **DD-29 · Aprobada · JWT con HS256 y sin revocación del access**
+> **Contexto:** D-05 fija la duración del access, pero no el algoritmo ni los claims.
+> **Opciones:** (1) HS256 con un secreto compartido; (2) RS256 o EdDSA con un par de llaves.
+> **Decisión:** HS256. Se fuerza la lista de algoritmos aceptados (`algorithms: ['HS256']`), para que no se puedan colar tokens con `alg: none` ni con otro algoritmo. El access no se revoca: su vida de 15 minutos es la ventana máxima después de cerrar sesión o de detectar el reúso de un refresh.
+> **Motivo:** la misma API firma y verifica, así que la criptografía asimétrica no aporta nada hasta que otro servicio tenga que verificar tokens; ese cambio va en `docs/aws-deploy.md`. Consultar la base en cada petición para revocar el access añadiría una lectura a cada operación para cerrar una ventana de 15 minutos, que es justo lo que el access corto ya acota.
+
+### 5.3 Refresh token y familias de sesión
+
+**Valor.** 32 bytes de `crypto.randomBytes`, en base64url sin relleno (43 caracteres). En la base se guarda solo su SHA-256 en hexadecimal (D-05, RNF-02).
+
+**Cookie de la web** (D-06, DD-24): `billetera_refresh=<valor>; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=<segundos hasta expira_en>`.
+
+**Login.** Crea una fila en `sesion` con `familia_id` nueva y `expira_en = ahora + 7 días`.
+
+**Rotación** (`POST /auth/refresh`), en una `conTransaccion`:
+
+1. `SELECT … FROM sesion WHERE refresh_hash = $1 FOR UPDATE`.
+2. Según lo que encuentre:
+
+| Caso | Acción | Respuesta |
+|---|---|---|
+| No existe | — | `401` |
+| `revocada_en` no es `NULL` | — | `401` |
+| `usada_en` no es `NULL` (**reúso**) | Revoca toda la familia (`UPDATE sesion SET revocada_en = $ahora WHERE familia_id = $1 AND revocada_en IS NULL`), registra `refresh-reuse-detected` y **confirma la transacción** | `401` |
+| `expira_en <= ahora` | — | `401` |
+| Válido | Marca `usada_en` e inserta una fila nueva en la **misma familia**, con el **mismo `expira_en`** | `200` con tokens nuevos |
+
+El reúso se devuelve como resultado, no como excepción, para que la revocación y la auditoría se confirmen antes de responder `401`. Es el mismo patrón que los rechazos de negocio (§2.1).
+
+**Bloqueos.** La rotación solo bloquea filas de `sesion`. Ningún flujo bloquea a la vez una sesión y filas de dinero (`usuario`, `transferencia`, `cuenta`), así que no se puede formar un ciclo con el orden total de D-12.
+
+**Logout.** Busca la sesión por el hash del refresh, sin importar si ya se usó, y revoca su familia. Si no la encuentra, responde `204` igual (DD-24) y borra la cookie.
+
+**Coordinación en los clientes.** La web usa `navigator.locks.request('billetera-refresh', …)` para que solo una pestaña rote a la vez (R-1.15). La pestaña que esperaba el lock manda la cookie ya rotada, porque la cookie es compartida. La app móvil guarda una sola promesa de refresh en vuelo (R-1.17). Detalle en §13.
+
+> **DD-30 · Aprobada · La familia de sesión vence 7 días después del login**
+> **Contexto:** D-05 dice "refresh de 7 días", pero no dice si cada rotación renueva el plazo.
+> **Opciones:** (1) vencimiento deslizante: cada refresh nuevo vence 7 días después de emitirse, así que la sesión dura mientras se use al menos una vez por semana; (2) vencimiento absoluto: los refresh rotados heredan el `expira_en` de la familia.
+> **Decisión:** vencimiento absoluto. Una sesión dura como máximo 7 días desde el login, sin importar cuántas veces se rote.
+> **Motivo:** con vencimiento deslizante, un refresh robado y usado con regularidad mantendría la sesión del atacante abierta para siempre. En una billetera, volver a iniciar sesión una vez por semana es un costo aceptable.
+
+### 5.4 CSRF y CORS
+
+| Superficie | Protección |
+|---|---|
+| Endpoints con `Authorization: Bearer` | No aplica CSRF: el navegador no adjunta ese header por su cuenta |
+| `POST /auth/refresh` y `/auth/logout` por cookie | `SameSite=Strict`, más el header `X-Requested-With: fetch`, que obliga a un *preflight* CORS desde otro origen (R-1.16, RNF-05) |
+| CORS | `origin: WEB_ORIGIN`, `credentials: true`. En local, la web y la API comparten origen gracias al proxy de Vite (D-06), así que CORS solo actúa ante orígenes ajenos |
+
+El rate limit de login y registro está en §11, y los eventos de auditoría de sesión en §10.
+
+---
+
+## 6. Transferencias: concurrencia, idempotencia, límite y código
+
+### 6.1 Algoritmo de creación
+
+`POST /transferencias` se procesa en el caso de uso `crearTransferencia`. El controlador solo pasa el cuerpo validado, la llave y el `usuarioId`.
+
+```mermaid
+flowchart TD
+    A[Cuerpo validado + Idempotency-Key] --> B{¿Existe la llave<br/>para este usuario?}
+    B -- sí, mismo hash --> R[Respuesta original<br/>reconstruida, DD-32]
+    B -- sí, otro hash --> K[422 idempotency-key-reused]
+    B -- no --> C{¿Origen y destino<br/>existen y son del usuario?}
+    C -- no --> N[404 not-found]
+    C -- sí --> D{¿Origen = destino?}
+    D -- sí --> M[422 misma-cuenta]
+    D -- no --> T[[conTransaccion]]
+    T --> L1[ahora = Reloj · bloquea usuario]
+    L1 --> L2{¿La llave apareció<br/>mientras esperaba?}
+    L2 -- sí --> R
+    L2 -- no --> L3[Bloquea cuentas por id ascendente]
+    L3 --> S{¿saldo origen ≥ monto?}
+    S -- no --> RS[RECHAZADA · SALDO_INSUFICIENTE<br/>422]
+    S -- sí --> TP{¿TERCERO?}
+    TP -- no --> AP[APLICADA + 2 asientos<br/>201]
+    TP -- sí --> LI{¿consumido + monto ≤ límite?}
+    LI -- no --> RL[RECHAZADA · LIMITE_DIARIO_EXCEDIDO<br/>422]
+    LI -- sí --> U{¿monto > umbral?}
+    U -- no --> AP
+    U -- sí --> PE[PENDIENTE_CONFIRMACION + código<br/>202]
+```
+
+**Pasos**
+
+1. **Búsqueda rápida de la llave**, sin bloqueo: `SELECT … WHERE usuario_id = $1 AND llave_idempotencia = $2`. Si existe, se compara el hash (§6.2) y se responde sin abrir transacción de escritura.
+2. **Resolución del destino**, fuera de la transacción, porque las cuentas no cambian de dueño (DD-17):
+   - `CUENTA_PROPIA`: la cuenta debe ser del usuario.
+   - `BENEFICIARIO`: el beneficiario debe ser del usuario; su `cuenta_id` es el destino.
+   - Origen inexistente o ajeno, o destino inexistente o ajeno: `404 not-found`, idéntico en todos los casos (R-4.6). Fondeo nunca pasa este filtro: no es de ningún usuario y no puede ser beneficiario (R-4.7).
+   - Origen igual a destino: `422 misma-cuenta`, sin crear la fila (R-4.4).
+   - **Clasificación** (D-04): `TRASPASO` si el dueño de la cuenta destino es el usuario; si no, `TERCERO`.
+3. **Transacción** (`conTransaccion`, §2.3):
+   1. `ahora = Reloj.ahora(tx)` (DD-07).
+   2. Bloquea al usuario: `SELECT id FROM usuario WHERE id = $1 FOR UPDATE` (D-04).
+   3. **Vuelve a buscar la llave.** Dos peticiones con la misma llave son del mismo usuario, así que el bloqueo del paso anterior las pone en fila. La segunda encuentra aquí la fila que confirmó la primera y responde con ella (R-4.16).
+   4. Bloquea las dos cuentas: `SELECT … FROM cuenta WHERE id = ANY($1) ORDER BY id FOR UPDATE` (D-12).
+   5. Valida el saldo: `origen.saldo_centavos >= monto`.
+   6. Solo si es `TERCERO`: valida el límite (§6.4).
+   7. Solo si es `TERCERO` y `monto > UMBRAL_CODIGO_CENTAVOS`: crea la pendiente y su código (§6.5).
+   8. Si no, inserta la transferencia `APLICADA` con `aplicada_en = ahora` y sus dos asientos con `creado_en = ahora`. El trigger mueve los saldos (D-01).
+   9. Si un paso de validación falla, inserta la transferencia `RECHAZADA` con su motivo.
+   10. Registra el evento de auditoría (§10) y confirma.
+4. **Respuesta:** `respuestaDeTransferencia(fila)` (§6.2).
+
+Los pasos 5 a 7 usan las filas ya bloqueadas, así que nada puede cambiar el saldo ni lo consumido entre la validación y la escritura. El `CHECK` de saldo queda como la última red (D-12).
+
+> **DD-31 · Aprobada · Saldo y límite se validan también al crear una pendiente, saldo primero**
+> **Contexto:** D-14 dice que una pendiente no reserva saldo ni límite y que todo se vuelve a validar al confirmar. No dice si se valida también al crearla.
+> **Opciones:** (1) crear la pendiente sin validar, y rechazar solo al confirmar; (2) validar al crear y volver a validar al confirmar.
+> **Decisión:**
+> - La opción 2. Toda transferencia, pendiente o no, pasa por el bloqueo de cuentas y las validaciones de saldo y límite antes de decidir su estado. Si falla, queda `RECHAZADA` de inmediato y no se genera código. Al confirmar se valida otra vez (R-6.10), porque la pendiente no reservó nada.
+> - Orden fijo de las validaciones: **saldo, luego límite, luego umbral**. Si fallan el saldo y el límite a la vez, el motivo es `SALDO_INSUFICIENTE`.
+> **Motivo:** pedirle un código al usuario para algo que ya se sabe que no puede pasar es una mala experiencia, y además genera un código y un evento de auditoría inútiles. Un orden fijo hace determinista el motivo de rechazo, así que las pruebas pueden afirmarlo. El saldo va primero porque es la restricción que no depende del día.
+
+### 6.2 Idempotencia
+
+**Hash de la petición** (D-03). SHA-256 en hexadecimal de este JSON canónico, con las claves en este orden fijo:
+
+```json
+["v1", "<cuentaOrigenId>", "<destino.tipo>", "<beneficiarioId o cuentaId>", <montoCentavos>, "<concepto>", "<referencia>"]
+```
+
+- Se calcula **después** de que Zod normaliza: `trim`, Unicode NFC y los uuid en minúsculas. Dos cuerpos que difieren solo en espacios o en la forma de un acento producen el mismo hash.
+- Es un arreglo, no un objeto, para que el orden de las claves del cliente no importe.
+- `"v1"` versiona el formato: si un día cambia el cuerpo, las llaves viejas no chocan con el formato nuevo.
+
+**Escenarios**
+
+| Situación | Resultado | Requisito |
+|---|---|---|
+| Llave nueva | Se procesa (§6.1) | R-4.1 |
+| Misma llave, mismo hash, transferencia ya resuelta o pendiente | La **respuesta original**, reconstruida desde la fila (abajo). Sin mover dinero ni generar código | R-4.14 |
+| Misma llave, hash distinto | `422 idempotency-key-reused`, sin mover dinero | R-4.15 |
+| Dos peticiones simultáneas con la misma llave | El bloqueo del usuario las pone en fila. La segunda encuentra la fila en el paso 3.3 y devuelve lo mismo | R-4.16 |
+| Misma llave, dos usuarios | Dos transferencias independientes: la unicidad es por `(usuario_id, llave_idempotencia)` | R-4.17 |
+| Petición sin `Idempotency-Key` o sin formato UUID | `400 validation-error` antes de tocar la base | R-4.13 |
+| Petición rechazada antes de crear la fila (`404`, `422 misma-cuenta`, `400`) | No se guarda nada: un reintento con la misma llave vuelve a evaluarse desde cero | D-14 |
+| `503` por timeout de bloqueo | No se guardó nada (`ROLLBACK`). El reintento con la misma llave procesa la operación una sola vez | R-4.19 |
+
+**Red de seguridad del `23505`.** Si, pese al bloqueo del usuario, el `INSERT` choca con `UNIQUE (usuario_id, llave_idempotencia)`, la transacción ya está abortada. El caso de uso abre otra `conTransaccion`, lee la fila ganadora y responde como en el escenario de repetición (D-03). Con el bloqueo del usuario, esto no debería ocurrir; si ocurre, se registra como `warn`.
+
+**`respuestaDeTransferencia(fila)`** es una función pura de la transferencia, su código de confirmación (si existe) y los datos del comprobante:
+
+| La fila se creó como | Se reconoce porque | Respuesta |
+|---|---|---|
+| `APLICADA` sin código | No tiene `codigo_confirmacion` y está `APLICADA` | `201` con el comprobante |
+| `RECHAZADA` sin código | No tiene `codigo_confirmacion` y está `RECHAZADA` | `422` con su motivo y `transferenciaId` |
+| `PENDIENTE_CONFIRMACION` | Tiene `codigo_confirmacion` | `202` con `codigoExpiraEn` del código, **sin `codigoSimulado`** (DD-25) |
+
+Los datos del comprobante (nombres de cuenta, CLABE, alias y nombre del beneficiario) son inmutables: ni las cuentas ni los beneficiarios tienen permisos de `UPDATE` sobre esas columnas (DD-18). Por eso la reconstrucción da siempre el mismo cuerpo.
+
+> **DD-32 · Aprobada · La repetición devuelve la respuesta original, no el estado actual**
+> **Contexto:** una pendiente cambia de estado después de crearse: se aplica, se rechaza o vence. Si llega una repetición con la misma llave después de ese cambio, hay dos lecturas posibles de "devolver el resultado guardado" (D-03).
+> **Opciones:** (1) responder según el estado actual: `201` si ya se aplicó, `422` si venció; (2) responder siempre lo mismo que la primera vez.
+> **Decisión:**
+> - La opción 2: la repetición de una transferencia creada como pendiente siempre devuelve el `202` original. El estado actual se consulta con `GET /transferencias/{id}`, o se obtiene al confirmar, porque confirmar una ya aplicada devuelve su `201` y una ya rechazada devuelve su `422` (R-6.13).
+> - Normalización y forma del hash como arriba, con el prefijo de versión `"v1"`.
+> **Motivo:** R-4.14 exige el mismo código y el mismo cuerpo; con la opción 1, la misma llave daría respuestas distintas según el momento. Los clientes no pierden nada, gracias a las dos reglas de "Reanudación en los clientes" (abajo): un `202` que llega por reintento se contrasta con el estado real, y una confirmación interrumpida se reintenta como confirmación.
+> **Precisión aprobada, que afecta a D-16 y D-17:** el intento guardado registra su **fase**, y un `202` recibido por reintento o reanudación se contrasta con `GET /transferencias/{id}` antes de pedir el código. Detalle abajo y en las máquinas de estados de §13.2 y §13.3.
+
+#### Reanudación en los clientes
+
+El intento que la web guarda en `sessionStorage` (D-16) y la app móvil en `expo-secure-store` (D-17) tiene una **fase**:
+
+| Fase | Contenido guardado | Qué se reintenta si se pierde la red o se reanuda | Por qué es seguro |
+|---|---|---|---|
+| `creacion` | Llave, cuerpo congelado, id del usuario (móvil) | `POST /transferencias` con la **misma llave** y el mismo cuerpo | Idempotencia por llave (D-03) |
+| `confirmacion` | Lo anterior, más `transferenciaId`, `codigoExpiraEn`, `codigoSimulado` si vino (DD-25) y, mientras la petición está en vuelo, el código capturado | `POST /transferencias/{id}/confirmar` con el mismo código, **nunca** la creación | Confirmar es idempotente por el id de la transferencia (D-07, R-6.13) |
+
+- El intento pasa de `creacion` a `confirmacion` en cuanto llega el `202` (de la primera respuesta o de una repetición), y se guarda **antes** de mostrar la captura del código.
+- El código capturado se guarda solo mientras la confirmación está en vuelo, y se borra al recibir respuesta. El intento completo se borra al resolverse (`201` o `422`) y al cerrar sesión (R-1.12).
+- **Un `202` recibido por reintento o reanudación no lleva directo a la captura del código.** Primero el cliente consulta `GET /transferencias/{id}`, que además aplica la expiración perezosa (R-6.12), y muestra el estado real:
+
+  | Estado real | El cliente muestra |
+  |---|---|
+  | `APLICADA` | El comprobante, armado con la respuesta del `GET` |
+  | `RECHAZADA` | El rechazo con su motivo |
+  | `PENDIENTE_CONFIRMACION` | La captura del código, con el `codigoExpiraEn` real |
+
+  Solo la **primera** respuesta `202` de un intento lleva directo a la captura, porque en ese momento el estado real es necesariamente "pendiente".
+- **Costo aceptado:** si el código reintentado era incorrecto, el reintento también falla y cuenta como un intento más (D-07). El usuario lo ve en `intentosRestantes`. Evitarlo exigiría una llave de idempotencia también en la confirmación, que D-07 no contempla. Va en "qué haría con más tiempo".
+
+Para que el `GET` alcance a armar el comprobante, el esquema `Transferencia` de `openapi.yaml` lleva el mismo `origen` (`cuentaId`, `nombre`, `clabeTerminacion`) y `destino` que `Comprobante`.
+
+### 6.3 Orden de bloqueo y timeouts
+
+Orden total de D-12: **usuario → transferencia / código → cuentas por `id` ascendente.** Cada flujo toma un prefijo de esa secuencia y nunca vuelve a un nivel anterior:
+
+| Flujo | Usuario | Transferencia y código | Cuentas | Transacciones |
+|---|---|---|---|---|
+| Crear transferencia (§6.1) | ✓ | — (la fila se inserta, no se bloquea) | ✓ origen y destino | 1 |
+| Confirmar con código correcto (§6.5) | ✓ | ✓ | ✓ origen y destino | 1 |
+| Confirmar con código incorrecto | ✓ | ✓ | — | 1, que se confirma solo con el intento |
+| Expiración perezosa (`GET /transferencias/{id}` o confirmar) | ✓ | ✓ | — | 1 |
+| Registro con fondeo de bienvenida (D-20) | ✓ (el usuario recién insertado) | — | ✓ Fondeo y `Principal` | 1 |
+| Fondeo del seed (fase 1) | ✓ | — | ✓ Fondeo y destino | 1 por fondeo |
+| Refresh y logout (§5.3) | — | — | — | Solo `sesion`, fuera del dominio del dinero |
+
+- **Timeouts:** `lock_timeout = 5s` y `statement_timeout = 10s` en cada transacción (D-12). Si se agotan, `503 retryable` (DD-10).
+- **Deadlock (`40P01`):** se reintenta hasta 3 veces con log `warn` (§2.3). Con el orden total no debería ocurrir; si ocurre, es un bug en el orden. La prueba de concurrencia exige cero deadlocks (RNF-24).
+- **Punto caliente de Fondeo.** Todo fondeo bloquea la fila de Fondeo, así que los registros simultáneos hacen fila en ella (D-20). En local es irrelevante; el escenario ×100 va en `docs/aws-deploy.md`.
+
+### 6.4 Límite diario y medianoche
+
+Una sola función de repositorio, `consumidoDelDia(tx, usuarioId, ahora)`, sirve a crear, confirmar y `GET /limites`:
+
+```sql
+SELECT coalesce(sum(monto_centavos), 0)::bigint AS consumido
+  FROM transferencia
+ WHERE usuario_id = $1
+   AND estado = 'APLICADA' AND tipo = 'TERCERO'         -- predicado del índice parcial (D-04, D-09)
+   AND aplicada_en >=  date_trunc('day', $2::timestamptz AT TIME ZONE 'America/Mexico_City')
+                         AT TIME ZONE 'America/Mexico_City'
+   AND aplicada_en <  (date_trunc('day', $2::timestamptz AT TIME ZONE 'America/Mexico_City')
+                         + interval '1 day') AT TIME ZONE 'America/Mexico_City';
+```
+
+- `$2` es `ahora` del `Reloj`. En la confirmación es la hora de la confirmación, no la de creación (R-6.6).
+- El día es `[00:00, 24:00)` local, con la zona con nombre y nunca con un desfase fijo (D-15, R-6.5). Sumar `1 day` **a la hora local** antes de volver a UTC da la medianoche correcta aunque la zona cambie de horario.
+- Usa el índice parcial `(usuario_id, aplicada_en) WHERE estado = 'APLICADA' AND tipo = 'TERCERO'` como rango.
+- La regla es `consumido + monto <= LIMITE_DIARIO_CENTAVOS`. Llegar exactamente al límite está permitido (R-6.1).
+- Solo cuentan los envíos a tercero aplicados (R-6.3). Las pendientes no reservan límite (D-14).
+
+**`GET /limites`** devuelve `limiteCentavos`, `consumidoCentavos`, `disponibleCentavos = max(0, límite − consumido)`, `dia` (fecha local) y `reiniciaEn` (inicio del día siguiente, en UTC), todo calculado en la API (R-6.7).
+
+**Pruebas de la medianoche** (RNF-23), con `RelojFijo`:
+
+| Escenario | `ahora` (local) | Esperado |
+|---|---|---|
+| Agotar el límite al final del día | Transferencias aplicadas a las 23:59:59.999999 | Una más el mismo día: `LIMITE_DIARIO_EXCEDIDO` |
+| Día siguiente | 00:00:00.000000 | Consumido = 0; se aplica |
+| Pendiente que cruza la medianoche | Creada a las 23:58, confirmada a las 00:01 | Cuenta para el día nuevo y se valida contra ese día |
+| Exactamente en el límite | Consumido `4000000` y monto `1000000` | Se aplica; disponible = 0 |
+
+### 6.5 Código de un solo uso
+
+**Generación**, dentro de la transacción de creación (§6.1, paso 7):
+
+- `codigo = crypto.randomInt(0, 1_000_000)`, con ceros a la izquierda hasta 6 dígitos.
+- Se guarda `codigo_hmac = HMAC-SHA256(OTP_HMAC_SECRETO, transferenciaId + ":" + codigo)` en hexadecimal, con `expira_en = ahora + 5 minutos` (D-07).
+- Después de confirmar la transacción, `ProveedorOtp.enviar` entrega el código. La implementación simulada lo devuelve para `codigoSimulado` (R-6.17).
+
+El código nunca se guarda en claro ni se escribe en los logs (R-6.16): `pino` censura `codigo` y `codigoSimulado` en cualquier ruta (§10), y los cuerpos de las peticiones no se registran.
+
+**Confirmación** (`POST /transferencias/{id}/confirmar`), en una sola `conTransaccion`:
+
+1. `ahora = Reloj.ahora(tx)`; bloquea al usuario.
+2. Bloquea la transferencia (`WHERE id = $1 AND usuario_id = $2 FOR UPDATE`) y su código. Si no existe o es ajena: `404` (R-6.14).
+3. Según su estado:
+
+| Estado y condición | Acción | Respuesta |
+|---|---|---|
+| `APLICADA` | Ninguna; no consume intentos | El mismo `201` con el mismo comprobante (R-6.13) |
+| `RECHAZADA` | Ninguna | El mismo `422` de su rechazo |
+| Pendiente y `expira_en <= ahora` | Pasa a `RECHAZADA/CODIGO_EXPIRADO` y audita | `422 codigo-expirado` (R-6.12) |
+| Pendiente, código incorrecto, `intentos + 1 < 3` | `intentos + 1` y evento `codigo-incorrecto` | `422 codigo-incorrecto` con `intentosRestantes` |
+| Pendiente, código incorrecto, `intentos + 1 = 3` | `intentos = 3`, evento `codigo-incorrecto`, `RECHAZADA/CODIGO_AGOTADO` y su evento | `422 codigo-agotado` (R-6.11) |
+| Pendiente y código correcto | Bloquea las cuentas por `id` ascendente y vuelve a validar saldo y límite con `ahora` (§6.1, pasos 3.5 y 3.6) | `201`, o `422` por saldo o límite (R-6.10) |
+
+4. Confirma la transacción y responde.
+
+- **El intento fallido queda confirmado antes de responder** (R-6.11). Es un resultado, no una excepción (§2.1). Esa transacción no toca cuentas ni dinero, que es lo que pide D-07 con "su propia transacción ya confirmada".
+- **Comparación de tiempo constante:** `crypto.timingSafeEqual` sobre los dos HMAC como `Buffer` de 32 bytes (R-6.16).
+- **Expiración perezosa en `GET /transferencias/{id}`:** lee la fila sin bloqueo. Solo si está pendiente y vencida, abre la transacción, bloquea usuario y transferencia en el orden de D-12, vuelve a comprobar y la pasa a `RECHAZADA/CODIGO_EXPIRADO` (D-14).
+- Para volver a intentar después de un rechazo por código, el cliente vuelve al formulario y genera una llave nueva (R-6.15).
+
+> **DD-33 · Aprobada · El HMAC del código incluye el id de la transferencia, y el fallo responde con los intentos restantes**
+> **Contexto:** D-07 fija el HMAC, los 3 intentos y la comparación de tiempo constante, pero no qué datos entran al HMAC ni qué ve el usuario al fallar.
+> **Decisión:**
+> - El mensaje del HMAC es `transferenciaId + ":" + codigo`.
+> - Un fallo que no agota los intentos responde `422 codigo-incorrecto` con `intentosRestantes` (2 o 1). El tercer fallo responde `422 codigo-agotado`, que es el rechazo definitivo.
+> **Motivo:** con el id en el mensaje, el mismo código de 6 dígitos en dos transferencias produce dos HMAC distintos: quien lea la tabla no puede ver qué transferencias comparten código ni reusar uno entre transferencias. Decirle al usuario cuántos intentos le quedan no ayuda a un atacante, que ya sabe que son 3 (D-07), y evita que el usuario agote el último sin saberlo.
+
+### 6.6 Comprobante
+
+Cierra el pendiente §12.5 de `requirements.md`. El esquema es `Comprobante` en `openapi.yaml`:
+
+| Campo | Contenido |
+|---|---|
+| `transferenciaId` | Sirve como folio |
+| `estado` | Siempre `APLICADA` |
+| `tipo` | `TRASPASO` o `TERCERO` |
+| `montoCentavos`, `concepto`, `referencia` | Tal como se capturaron |
+| `origen` | `cuentaId`, `nombre` de la cuenta y `clabeTerminacion` (últimos 4 dígitos) |
+| `destino` | `etiqueta` (alias del beneficiario o nombre de la cuenta propia), `nombre` (nombre capturado del beneficiario o de la cuenta propia) y `clabeTerminacion` |
+| `creadaEn`, `aplicadaEn` | Instantes en UTC (DD-22). En una transferencia confirmada con código, son distintos |
+
+Los clientes muestran las fechas en hora de `America/Mexico_City` y el monto con `formatearMXN` (R-2.5).
+
+> **DD-34 · Aprobada · Contenido del comprobante (cierra §12.5)**
+> **Contexto:** R-4.11 pide un comprobante "con los datos de la transferencia" sin fijar cuáles.
+> **Decisión:** los campos de la tabla. Las CLABE se muestran solo con sus últimos 4 dígitos. No incluye el correo ni ningún dato del titular de la cuenta destino.
+> **Motivo:** un comprobante se comparte, por ejemplo en una captura de pantalla. Los últimos 4 dígitos bastan para que el usuario reconozca la cuenta sin exponer la CLABE completa. No revelar al titular cumple R-3.6 también aquí: el nombre que aparece es el que el usuario capturó.
+
+### 6.7 Longitudes y formatos de los campos
+
+Los valores están en DD-16 (§3.2) y se aplican igual en tres lugares: el esquema Zod de `shared` (web, móvil y API), el `CHECK` de la base y `openapi.yaml`. La política de contraseña está en §5.1. Resumen:
+
+| Campo | Regla |
+|---|---|
+| `correo` | 3 a 254 caracteres, normalizado a minúsculas |
+| `contrasena` | 12 a 128 caracteres en NFC (DD-28) |
+| `nombre` del beneficiario | 1 a 100 caracteres |
+| `alias` | 1 a 40 caracteres |
+| `concepto` | 1 a 40 caracteres |
+| `referencia` | 1 a 7 dígitos, como texto |
+| `montoCentavos` | Entero de 1 a `100000000000` (D-18) |
+| `clabe` | 18 dígitos con dígito verificador válido (D-19) |
+| `codigo` | 6 dígitos |
+
+Todos los textos se recortan, se normalizan a NFC y no admiten caracteres de control.
+
+---
+
+## 7. Manejo de errores RFC 7807
+
+### 7.1 Formato
+
+```http
+HTTP/1.1 422 Unprocessable Content
+Content-Type: application/problem+json
+X-Request-Id: 6f0c…
+
+{
+  "type": "saldo-insuficiente",
+  "title": "Saldo insuficiente",
+  "status": 422,
+  "detail": "La cuenta origen no tiene saldo suficiente para esta transferencia.",
+  "motivo": "SALDO_INSUFICIENTE",
+  "transferenciaId": "0b6f1f8e-4f0c-4b8e-9a51-7d0e0f6a2c11"
+}
+```
+
+- `type`, `title`, `status` y `detail` siempre van presentes (RNF-01). `instance` no se usa.
+- **`title` es fijo por `type`**, y **`detail` es un texto fijo en español** escrito para el usuario. Ninguno se arma con mensajes de excepciones ni de PostgreSQL.
+- Las extensiones son solo las de DD-23: `errores`, `motivo`, `transferenciaId` e `intentosRestantes`.
+- Los clientes deciden por `type`, nunca por `detail`.
+
+### 7.2 Catálogo
+
+| `type` | HTTP | Cuándo | Extensiones | Requisitos |
+|---|---|---|---|---|
+| `validation-error` | 400 | Falla un esquema Zod, el JSON está mal formado, el cuerpo pasa de 16 kB, o `desde > hasta` | `errores` | R-1.5, R-3.3, R-3.4, R-4.8, R-4.9, R-4.13, R-5.2, R-5.5, R-B1.5 |
+| `invalid-cursor` | 400 | Cursor mal formado o generado con otros filtros | — | R-5.7 |
+| `unauthorized` | 401 | Sin access válido; credenciales incorrectas; refresh inválido, vencido, revocado o reusado | — | R-1.7, R-1.9 a R-1.11 |
+| `not-found` | 404 | Recurso inexistente o ajeno; ruta inexistente | — | R-2.4, R-3.11, R-4.6, R-4.10, R-5.10, R-6.14, R-B1.4 |
+| `correo-ya-registrado` | 409 | Registro con un correo existente (concesión de DD-23) | — | R-1.4 |
+| `beneficiario-duplicado` | 409 | Misma CLABE o mismo alias, sin distinguir mayúsculas, entre los beneficiarios del usuario | `errores` (campo `clabe` o `alias`) | R-3.7 |
+| `clabe-not-found` | 422 | CLABE válida que no es de ninguna cuenta de usuario | — | R-3.5 |
+| `misma-cuenta` | 422 | Origen igual a destino; no se crea la fila | — | R-4.4 |
+| `idempotency-key-reused` | 422 | Misma llave con otro cuerpo | — | R-4.15 |
+| `saldo-insuficiente` | 422 | Rechazo guardado | `motivo`, `transferenciaId` | R-4.3, R-6.10 |
+| `limite-diario-excedido` | 422 | Rechazo guardado | `motivo`, `transferenciaId` | R-6.2, R-6.10 |
+| `codigo-incorrecto` | 422 | Código erróneo con intentos restantes | `transferenciaId`, `intentosRestantes` | R-6.11 |
+| `codigo-agotado` | 422 | Tercer fallo, o confirmar una ya rechazada por agotamiento | `motivo`, `transferenciaId` | R-6.11 |
+| `codigo-expirado` | 422 | Código vencido | `motivo`, `transferenciaId` | R-6.12 |
+| `too-many-requests` | 429 | Rate limit excedido; con `Retry-After` | — | R-1.18, R-3.9 |
+| `retryable` | 503 | `lock_timeout`, `statement_timeout`, deadlock que persiste tras 3 reintentos, o base no disponible; con `Retry-After: 1` | — | R-4.19 |
+| `internal-error` | 500 | Cualquier otra cosa | — | RNF-01 |
+
+Los `type` de esta tabla son exactamente el `enum` de `TipoProblema` en `openapi.yaml`.
+
+### 7.3 Traducción de errores internos
+
+`manejadorErrores` es el único lugar que produce problems. Revisa la causa en este orden:
+
+| Origen | Se reconoce por | Problem |
+|---|---|---|
+| `ZodError` | Clase | `400 validation-error`; cada issue es un `{ campo, mensaje }` con su ruta prefijada (`body.`, `query.`, `params.`, `headers.`) |
+| JSON mal formado | `SyntaxError` de `express.json` (`type = 'entity.parse.failed'`) | `400 validation-error` con `campo: "body"` |
+| Cuerpo demasiado grande | `type = 'entity.too.large'` | `400 validation-error` con `campo: "body"` |
+| `ErrorDominio` | Clase; lleva su `type` | El de su `type` |
+| `23505` en `uq_usuario_correo` | `constraint` del error de `pg` | `409 correo-ya-registrado` |
+| `23505` en `uq_beneficiario_usuario_clabe` o `uq_beneficiario_usuario_alias` | `constraint` | `409 beneficiario-duplicado` con el campo |
+| `23505` en `uq_transferencia_usuario_llave` | `constraint` | Lo resuelve el caso de uso (§6.2); nunca llega aquí |
+| `55P03`, `57014`, `40P01` agotado, conexión rechazada | `code` de `pg` | `503 retryable` (DD-10) |
+| Cualquier otro error | — | `500 internal-error` |
+
+**Las restricciones tienen nombre.** Cada `UNIQUE`, `CHECK`, FK y trigger se crea con nombre explícito (`uq_<tabla>_<columnas>`, `ck_<tabla>_<regla>`, `fk_<tabla>_<columna>`, `tg_<tabla>_<accion>`). El manejador decide por el **nombre** de la restricción, nunca por el texto del mensaje de PostgreSQL. Esos nombres no salen de la API.
+
+**Registro y beneficiarios sin verificar antes.** El duplicado se detecta por el `23505` del `INSERT`, no por un `SELECT` previo: la consulta previa tendría una carrera entre la lectura y la escritura, y el índice único es atómico.
+
+### 7.4 Qué nunca se filtra
+
+| Nunca en la respuesta | Dónde queda |
+|---|---|
+| Trazas, mensajes de excepciones, `err.message` | Log `error` con `reqId` (§10) |
+| SQL, `SQLSTATE`, nombres de tablas, columnas, restricciones o triggers | Log `error` |
+| Si un recurso ajeno existe (D-10) | — |
+| Si un correo existe al iniciar sesión (R-1.7) | — |
+| Valores de configuración o secretos | — |
+
+**Pruebas** (§14):
+
+- Se fuerza un error interno con un repositorio de prueba que lanza un error con SQL en el mensaje. La respuesta debe tener solo las cuatro claves estándar, y ni `SELECT`, ni `at `, ni el nombre de la tabla.
+- Para cada fila de §7.2, una prueba provoca el error y compara `type` y `status` con el catálogo.
+- La validación de respuestas con Ajv (DD-27) verifica la forma de cada problem contra `openapi.yaml`.
+
+> **DD-35 · Aprobada · Traducción de errores por nombre de restricción, con textos fijos**
+> **Contexto:** RNF-01 prohíbe filtrar detalles internos, pero el manejador necesita saber qué falló para elegir el `type`.
+> **Decisión:**
+> - Las restricciones tienen nombres explícitos con la convención anterior, y el manejador decide solo por `code` y `constraint` del error de `pg`.
+> - `title` y `detail` son textos fijos por `type`.
+> - JSON mal formado y cuerpo demasiado grande responden `400 validation-error`, sin `413` ni `type` propios.
+> - Un deadlock que persiste después de 3 reintentos responde `503 retryable`.
+> **Motivo:** decidir por el texto del mensaje rompe con cualquier cambio de versión o de idioma de PostgreSQL. Con textos fijos, ningún dato interno puede viajar por error dentro de `detail`. Mantener el catálogo en 17 `type` hace que cada cliente lo cubra completo con un mapa de textos.
 
 ---

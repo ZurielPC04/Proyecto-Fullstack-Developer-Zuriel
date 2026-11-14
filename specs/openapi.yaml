@@ -92,6 +92,7 @@ paths:
                 status: 409
                 detail: Inicia sesión o usa otro correo.
         '429': { $ref: '#/components/responses/DemasiadasPeticiones' }
+        '503': { $ref: '#/components/responses/Reintentable' }
         '500': { $ref: '#/components/responses/ErrorInterno' }
 
   /auth/login:
@@ -900,10 +901,13 @@ components:
             Solo con `OTP_SIMULADO=true` y solo en la primera respuesta; una repetición con la misma
             llave no lo incluye (DD-25). Nunca existe en producción (R-6.17).
     Transferencia:
-      description: Estado real de una transferencia propia, en cualquier estado (R-4.10).
+      description: |
+        Estado real de una transferencia propia, en cualquier estado (R-4.10). Lleva el mismo `origen`
+        y `destino` que `Comprobante`, para que el cliente pueda mostrar el comprobante de una
+        transferencia aplicada al reanudar un intento (design.md §6.2).
       type: object
       required:
-        [id, estado, tipo, montoCentavos, concepto, referencia, cuentaOrigenId, destino, creadaEn, aplicadaEn, motivoRechazo, codigoExpiraEn]
+        [id, estado, tipo, montoCentavos, concepto, referencia, origen, destino, creadaEn, aplicadaEn, motivoRechazo, codigoExpiraEn]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         estado: { $ref: '#/components/schemas/EstadoTransferencia' }
@@ -911,7 +915,7 @@ components:
         montoCentavos: { $ref: '#/components/schemas/Centavos' }
         concepto: { type: string }
         referencia: { type: string }
-        cuentaOrigenId: { $ref: '#/components/schemas/Uuid' }
+        origen: { $ref: '#/components/schemas/ResumenCuentaOrigen' }
         destino: { $ref: '#/components/schemas/ResumenDestino' }
         creadaEn: { $ref: '#/components/schemas/Instante' }
         aplicadaEn:
