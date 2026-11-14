@@ -30,6 +30,10 @@ _Avoid_: Tesorería, cuenta maestra
 Entrada de dinero desde Fondeo a una cuenta de usuario, tal como la ve el usuario.
 _Avoid_: Recarga, abono inicial
 
+**Salida de fondeo** (`FONDEO_SALIDA`):
+Asiento de cargo en la cuenta Fondeo que acompaña a cada depósito, para que los dos asientos sumen cero. Solo existe en Fondeo y nunca se muestra al usuario.
+_Avoid_: Retiro, emisión, envío
+
 ### Transferencias
 
 **Transferencia**:

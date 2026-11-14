@@ -200,6 +200,7 @@ Decisiones cerradas durante el interrogatorio previo a `requirements.md`. Todos 
 - Cierra el predicado del índice parcial de D-04: `WHERE estado = 'APLICADA' AND tipo = 'TERCERO'`.
 - Las transferencias rechazadas no aparecen en el historial de movimientos, porque no tienen asientos. Quedan en la tabla de transferencias y en la auditoría.
 - Vocabulario: "Movimiento" es lo que ve el usuario; "Asiento" es el registro contable. En la interfaz, un depósito nunca se llama "transferencia".
+- _Completada durante la fase de diseño (DD-13 de `design.md`):_ el catálogo no tenía tipo para el cargo en la cuenta Fondeo de un `FONDEO`, y el `CHECK` de signo lo exige. Se agrega `FONDEO_SALIDA` (signo negativo), que solo existe en Fondeo. No se expone en la API: el filtro del historial sigue aceptando solo los cinco tipos de usuario. El `CHECK` de signo no cambia, porque `FONDEO_SALIDA` no está en la lista de tipos positivos.
 
 **Motivo:** filtrar por una columna guardada permite usar índices en el historial. Calcular el tipo con un `JOIN` y el signo del monto no los podría usar. Como los asientos son inmutables, guardar el tipo no puede desincronizarse, y el `CHECK` impide que el signo y el tipo se contradigan.
 
