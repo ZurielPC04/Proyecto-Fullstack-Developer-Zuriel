@@ -472,3 +472,11 @@ Decisiones cerradas durante el interrogatorio previo a `requirements.md`. Todos 
 **Motivo:** con dos cuentas desde el registro, HU-2 y HU-4 se pueden demostrar sin pantallas extra. Que el primer saldo use el mismo camino que cualquier fondeo mantiene la regla de suma cero y la invariante global sin excepciones.
 
 **Alternativa descartada:** una sola cuenta al registrarse, más un endpoint y una pantalla "Abrir cuenta". Agrega alcance que el enunciado no pide, y un usuario recién registrado no podría demostrar HU-4 sin un paso previo.
+
+---
+
+## Decisiones de la fase de diseño
+
+Las decisiones tomadas durante la fase de diseño, **DD-01 a DD-46**, no se copian a este archivo. Viven en una sola fuente: la tabla de **§16 de [`design.md`](./design.md)**, con su sección, su relación con las decisiones D-xx de este archivo y su estado. Cada una está desarrollada (contexto, opciones, decisión y motivo) en la sección de `design.md` que indica la tabla.
+
+Las D-xx que alguna DD completa o precisa llevan aquí una nota que la cita: D-09 (DD-13), D-16 y D-17 (DD-32).

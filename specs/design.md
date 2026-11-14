@@ -28,7 +28,7 @@ Toda decisión que no esté en `decisiones.md` se marca en el texto así:
 > **DD-nn · Propuesta · Título**
 > **Contexto:** … **Opciones:** … **Decisión:** … **Motivo:** …
 
-Estados posibles: **Propuesta** (pendiente de aprobación), **Aprobada** o **Rechazada**. La §16 las consolida. Al aprobarse, cada una pasa a `decisiones.md` como `D-21` en adelante, y el `DD-nn` queda como alias.
+Estados posibles: **Propuesta** (pendiente de aprobación), **Aprobada** o **Rechazada**. La §16 las consolida y es su **única fuente**: no se copian a `decisiones.md`, que solo remite a esa tabla.
 
 Una precisión de una decisión existente que no cambia su sentido (por ejemplo, el nombre de una función) **no** se marca como `DD`; se cita la `D-nn` que precisa.
 
@@ -2091,3 +2091,603 @@ Variantes:
 - Al reabrir la app con un intento guardado del mismo usuario, se resuelve antes de mostrar el saldo; si es de otro usuario, no se envía (R-4.31).
 
 ---
+
+## 13. Clientes
+
+### 13.1 `packages/shared`
+
+Sin dependencias de React, de Node ni de Expo. Lo usan la API, la web y la app móvil (RNF-18).
+
+| Módulo | Exporta | Requisitos |
+|---|---|---|
+| `dinero` | `montoTextoACentavos`, `formatearMXN`, `centavosATextoDecimal`, `TOPE_CENTAVOS` | R-2.5, R-4.33, R-4.34, R-B1.2, D-18 |
+| `clabe` | `digitoVerificador`, `validarClabe` | R-3.2 a R-3.4, R-3.10, D-19 |
+| `tiempo` | `ZONA_HORARIA`, `instanteIso` (DD-22) | D-15 |
+| `esquemas` | Esquemas Zod de entrada: registro, login, refresh, beneficiario, transferencia (con `destino` discriminado, DD-26), confirmación, filtros del historial, mes; y `normalizarTexto` (`trim` + NFC) | RNF-01, RNF-18 |
+| `problemas` | `TipoProblema` y `mensajeDeProblema(type)`: los textos en español que muestran web y móvil | R-4.12 |
+| `api` | Tipos generados de `openapi.yaml` y sus alias (§4.3) | RNF-18 |
+
+**`montoTextoACentavos(texto)`** devuelve `{ ok: true, centavos }` o `{ ok: false, error }`. Trabaja **sobre el texto**, sin multiplicar ni redondear (D-18):
+
+1. Quita un `$` inicial opcional y los espacios.
+2. Valida contra `^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$`. Esto rechaza el signo, la notación exponencial, las comas mal agrupadas y los textos vacíos. Más de 2 decimales da el error "Máximo 2 decimales".
+3. Quita las comas de la parte entera y completa la fracción a 2 dígitos con ceros a la derecha (`"1"` → `"10"`).
+4. Concatena parte entera y fracción en un solo texto de dígitos (`"0" + "10"` → `"010"`) y lo convierte con `Number`. Es un entero exacto, porque el tope cabe en `Number.MAX_SAFE_INTEGER`.
+5. Rechaza `0` y cualquier valor mayor que `TOPE_CENTAVOS` (`100000000000`).
+
+Casos de prueba: los de R-4.33, y además `"1.005"` → error, `"00.50"` → `50`, `"1,000.5"` → `100050`, `"$1,000,000.00"` → `100000000` y `"1000000000.01"` → error por tope.
+
+**`formatearMXN(centavos)`** (D-18):
+
+1. Separa el signo y toma el valor absoluto como texto, completado con ceros a la izquierda hasta 3 dígitos (`5` → `"005"`).
+2. Los pesos son todo menos los dos últimos dígitos, y los centavos son esos dos últimos.
+3. Formatea los pesos, que son un entero, con `Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).formatToParts(...)` y reemplaza la parte `fraction` por los centavos exactos.
+4. Antepone el signo: `-250` → `-$2.50`.
+
+En la primera tarea móvil se verifica que Hermes soporte `formatToParts`. Si no lo soporta, se usa un formateo manual de miles con los mismos casos de prueba (D-18).
+
+**`centavosATextoDecimal(centavos)`** hace la misma separación de texto, sin `Intl`, para el CSV: `-5` → `-0.05`, `0` → `0.00` (DD-38).
+
+**Reglas de lint en `web`, `mobile` y `shared`** (RNF-09, D-18):
+
+| Regla | Prohíbe |
+|---|---|
+| `no-restricted-globals` y `no-restricted-properties` | `parseFloat`, `Number.parseFloat`, `Math.round`, `Math.floor`, `Math.ceil` |
+| `no-restricted-syntax` | Cualquier división entre el literal `100` (`x / 100`) y cualquier llamada a `.toFixed(...)` |
+| `no-restricted-imports` (solo `mobile`) | `@react-native-async-storage/async-storage` (RNF-20) |
+
+Si una regla da un falso positivo fuera del camino del dinero, se desactiva en esa línea con un comentario que explique por qué.
+
+> **DD-42 · Aprobada · Reglas de lint para el dinero y el almacenamiento móvil**
+> **Contexto:** D-18 pide prohibir con lint `parseFloat` y `/ 100` sobre montos, y RNF-20 prohíbe `AsyncStorage`.
+> **Decisión:** además de `parseFloat` y `/ 100`, el lint prohíbe `Number.parseFloat`, `Math.round`, `Math.floor`, `Math.ceil` y `.toFixed` en `web`, `mobile` y `shared`. En `mobile` prohíbe además importar `AsyncStorage`. La regla aplica a todo el código y no intenta detectar "solo los montos".
+> **Motivo:** D-18 dice que en el sistema no existe ninguna operación de redondeo. Esas funciones son exactamente las de redondeo, y `toFixed` es el camino más común para formatear dinero con punto flotante. Detectar solo los montos exigiría análisis de tipos frágil; prohibirlas en general cuesta pocas excepciones explicadas. Prohibir el import convierte RNF-20 en una verificación automática.
+
+### 13.2 Web
+
+**Rutas** (React Router):
+
+| Ruta | Pantalla | Requisitos |
+|---|---|---|
+| `/login`, `/registro` | Login y registro | HU-1 |
+| `/` | Resumen: cuentas con saldo y límite del día (`GET /limites`) | R-2.1, R-2.6, R-6.7 |
+| `/cuentas/:cuentaId` | Historial con filtros y paginación, y botón del estado de cuenta | R-5.11, R-B1.6 |
+| `/beneficiarios` | Lista y formulario de alta | R-3.1, R-3.10 |
+| `/transferir` | Flujo de transferencia: formulario → confirmación → código → comprobante o rechazo | HU-4, HU-6 |
+
+`/transferir` es una sola ruta con la máquina del intento (abajo). Sus fases no son rutas, para que el botón "atrás" del navegador no cree un segundo intento.
+
+**Sesión** (D-05, D-06, R-1.13 a R-1.15):
+
+- El access vive en una variable de módulo de `auth/`, nunca en `localStorage` ni en `sessionStorage`.
+- Al cargar la app, una ruta protegida espera a `POST /auth/refresh` antes de pintar datos (R-1.14).
+- El cliente `fetch` agrega `Authorization`. Ante un `401`, refresca **una vez** y repite la petición original **una vez**. Repetir es seguro: un `POST /transferencias` lleva la misma llave.
+- El refresh corre dentro de `navigator.locks.request('billetera-refresh', …)`. Dentro del lock, la pestaña vuelve a revisar si otra ya obtuvo un access válido mientras esperaba; si es así, no rota (R-1.15).
+- Cerrar sesión llama a `POST /auth/logout`, borra el access en memoria y el intento de `sessionStorage`, y limpia la caché de TanStack Query (R-1.12).
+
+**Datos del servidor** (TanStack Query):
+
+| Clave | Uso |
+|---|---|
+| `['cuentas']` | Resumen |
+| `['limites']` | Resumen y formulario de transferencia |
+| `['movimientos', cuentaId, filtros]` | `useInfiniteQuery` con `siguienteCursor` |
+| `['beneficiarios']` | Lista y selector de destino |
+| `['transferencia', id]` | Consulta del estado real (§6.2) |
+
+- Valores por defecto: `staleTime` de 30 s; un reintento para las consultas, salvo respuestas 4xx; ningún reintento automático para mutaciones.
+- **Al terminar una transferencia, aplicada o rechazada**, la máquina del intento invalida las consultas `['cuentas']` y `['movimientos']` (todas las cuentas y filtros, por prefijo) y además `['limites']` (DD-43). Así, el resumen y el historial se vuelven a pedir al servidor y nunca muestran un saldo calculado en el cliente.
+- La transferencia **no** usa `useMutation`: su ciclo de vida es la máquina del intento, que no debe depender de los reintentos de la librería.
+
+**Estados por pantalla** (RNF-17):
+
+| Pantalla | Cargando | Vacío | Error | Éxito |
+|---|---|---|---|---|
+| Resumen | Esqueleto de tarjetas | — (siempre hay 2 cuentas, D-20) | Mensaje con "Reintentar" | Tarjetas con saldo y límite disponible |
+| Historial | Esqueleto de filas | "Sin movimientos" o "Sin resultados para estos filtros", según haya filtros | Mensaje con "Reintentar" | Tabla con "Cargar más" mientras haya `siguienteCursor` |
+| Beneficiarios | Esqueleto | "Aún no tienes beneficiarios", con el formulario visible | Mensaje con "Reintentar"; los errores del alta van junto a su campo | Lista y confirmación del alta |
+| Transferir | Selectores deshabilitados mientras cargan cuentas y beneficiarios | "Registra un beneficiario" con enlace, si no hay destinos | Por fase (máquina abajo) | Comprobante |
+| Login y registro | Botón con `aria-busy` | — | Error del formulario o de campo | Redirección al resumen |
+
+**Máquina del intento de transferencia** (D-16, DD-25, DD-32):
+
+```mermaid
+stateDiagram-v2
+    [*] --> Editando
+    Editando --> Confirmando: Continuar, congela datos y genera llave
+    Confirmando --> Editando: Editar, descarta la llave
+    Confirmando --> Enviando: Enviar, guarda intento en fase creacion
+    Enviando --> Comprobante: 201
+    Enviando --> Rechazado: 422
+    Enviando --> CapturandoCodigo: 202 de la primera respuesta
+    Enviando --> VerificandoEstado: 202 de un reintento o reanudación
+    Enviando --> ErrorReintentable: Red, timeout de 15 s o 503
+    ErrorReintentable --> Enviando: Reintentar con la misma llave
+    VerificandoEstado --> Comprobante: GET da APLICADA
+    VerificandoEstado --> Rechazado: GET da RECHAZADA
+    VerificandoEstado --> CapturandoCodigo: GET da PENDIENTE_CONFIRMACION
+    CapturandoCodigo --> ConfirmandoCodigo: Confirmar, fase confirmacion con el código
+    ConfirmandoCodigo --> Comprobante: 201
+    ConfirmandoCodigo --> CapturandoCodigo: 422 codigo-incorrecto
+    ConfirmandoCodigo --> Rechazado: 422 de rechazo
+    ConfirmandoCodigo --> ErrorConfirmacion: Red, timeout o 503
+    ErrorConfirmacion --> ConfirmandoCodigo: Reintentar la confirmación
+    Comprobante --> [*]: Borra el intento
+    Rechazado --> [*]: Borra el intento
+```
+
+- **Reanudación.** Si al cargar `/transferir` hay un intento en `sessionStorage`, la máquina arranca en un estado `VerificandoAnterior`, que muestra "Verificando operación anterior…" (R-4.25). Según la fase guardada, pasa a `Enviando` (reenvía la creación con la misma llave) o a `ConfirmandoCodigo` (reenvía la confirmación). No se puede iniciar otro intento hasta resolverlo.
+- **Doble clic y doble Enter** (R-4.21). "Enviar" y "Confirmar" son el botón `submit` de un `<form>`, así que el clic y el Enter pasan por el mismo `onSubmit`. Ese manejador revisa una bandera en `useRef` **antes** de cualquier `setState` y descarta el segundo disparo del mismo ciclo. El botón queda `disabled` con `aria-busy="true"` mientras la petición está en vuelo.
+- **Timeout:** `AbortController` de 15 s por petición, igual que en móvil (D-17).
+- **Rechazo** (R-4.12): muestra `mensajeDeProblema(type)` y un botón "Nueva transferencia", que vuelve a `Editando` con una llave nueva (R-4.23, R-6.15). Nunca muestra comprobante.
+- **`codigoSimulado`:** si viene, se muestra junto a la captura, marcado como "Modo de prueba", y se guarda con el intento (DD-25).
+
+**Montos y fechas:**
+
+- El campo de monto es de texto con `inputMode="decimal"`, y se convierte con `montoTextoACentavos` al validar.
+- Los saldos y montos se muestran con `formatearMXN`.
+- Las fechas se muestran con `Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City' })`. Convertir el instante a `Date` es aceptable aquí, porque solo se usa para mostrarlo (la precisión de milisegundos basta); el cursor nunca pasa por `Date` (D-11).
+
+**Estado de cuenta** (R-B1.6): selector de mes y botón "Descargar CSV". El cliente hace el `fetch` con `Authorization`, recibe un `Blob` y lo descarga con un enlace temporal; el nombre del archivo sale de `Content-Disposition`.
+
+**Accesibilidad** (RNF-19):
+
+- Todo campo tiene un `<label>` asociado. Su error va en un elemento enlazado con `aria-describedby`, y el campo se marca con `aria-invalid`.
+- Al fallar un envío, el foco va al primer campo con error.
+- Al cambiar de pantalla o de fase, el foco va al encabezado `h1` de la pantalla nueva.
+- Los mensajes de estado ("Verificando operación anterior…", intentos restantes) se anuncian en una región `aria-live="polite"`.
+- El foco es visible en todos los controles. Los colores se definen como tokens con contraste AA verificado.
+- Todos los flujos se completan solo con teclado. No hay acciones que solo respondan al ratón.
+- Las pruebas de Testing Library buscan los elementos por rol y por etiqueta, y corren `axe` (`vitest-axe`) sobre login, resumen, historial, beneficiarios y cada fase de la transferencia.
+
+> **DD-43 · Aprobada · Cliente web: refresh con Web Locks, una sola repetición tras `401`, transferencia sin `useMutation` y verificación con `axe`**
+> **Contexto:** D-05, D-06 y D-16 fijan los tokens, la coordinación entre pestañas y el ciclo de vida de la llave, pero no la mecánica del cliente.
+> **Decisión:**
+> - Ante un `401`, el cliente refresca una vez dentro del Web Lock, revisando primero si otra pestaña ya lo hizo, y repite la petición una vez.
+> - Al terminar una transferencia, aplicada o rechazada, se invalidan las consultas de TanStack Query de cuentas y movimientos (y de límites). Los datos del servidor siempre pasan por TanStack Query, como pide el enunciado; ningún saldo se actualiza a mano en el cliente.
+> - La transferencia es una máquina de estados propia, no un `useMutation`. El doble disparo se bloquea con una bandera en `useRef`. El timeout es de 15 s.
+> - El flujo de transferencia es una sola ruta.
+> - La accesibilidad se verifica con `axe` en las pruebas.
+> **Motivo:** la revisión dentro del lock evita que dos pestañas roten en cadena. Un `setState` no se aplica hasta el siguiente render, y la bandera en `useRef` sí bloquea dos eventos del mismo ciclo, que es justo el doble clic. Los reintentos automáticos de `useMutation` no saben de llaves de idempotencia. Una sola ruta impide que "atrás" y "adelante" del navegador creen intentos. `axe` convierte el "contraste suficiente" y las etiquetas en verificaciones automáticas.
+
+### 13.3 App móvil
+
+**Navegación** (React Navigation, native stack, DD-03):
+
+```mermaid
+flowchart TD
+    R{Raíz} -->|Sin sesión| L[Login]
+    R -->|Con sesión e intento pendiente del usuario| V[Resolviendo transferencia]
+    R -->|Con sesión y sin intento pendiente| S[Saldo]
+    V -->|Resuelto| S
+    S --> M[Movimientos<br/>últimos 20 de la cuenta elegida]
+    S --> T[Transferir<br/>beneficiario, origen, monto, concepto, referencia]
+    T --> C[Confirmar]
+    C --> E[Estado de la transferencia<br/>verificando, código, comprobante, rechazo o desconocido]
+    E --> S
+```
+
+La raíz monta **un solo stack a la vez** según el estado de la sesión y del intento. Mientras haya un intento sin resolver, el stack con Saldo no existe, así que no hay forma de navegar a otra transferencia (R-4.30, R-4.31).
+
+**Pantallas y estados** (RNF-17):
+
+| Pantalla | Cargando | Vacío | Error | Éxito |
+|---|---|---|---|---|
+| Login | Botón ocupado | — | Mensaje del formulario | Saldo |
+| Saldo | Indicador | — | Mensaje con "Reintentar" | Cuentas con saldo y límite disponible |
+| Movimientos | Indicador | "Sin movimientos" | Mensaje con "Reintentar" | Lista de los últimos 20 (`limite = 20`, sin paginar) (R-5.12) |
+| Transferir | Indicador mientras cargan cuentas y beneficiarios | "Registra un beneficiario en la web", si no hay ninguno (R-4.26) | Errores de campo | Pasa a Confirmar |
+| Estado | "Verificando estado de tu transferencia…" | — | "Estado desconocido" con "Verificar de nuevo" | Comprobante, captura del código o rechazo |
+
+**Sesión** (D-05, D-06, R-1.17):
+
+- El refresh se guarda en `expo-secure-store` con la llave `billetera.refresh`. El access solo vive en memoria.
+- Una sola promesa de refresh en vuelo; las peticiones que reciben `401` la esperan.
+- **El refresh nuevo se escribe en SecureStore antes de usar el access nuevo.** Si la app muere entre la respuesta del servidor y esa escritura, el refresh guardado ya está usado, el siguiente refresh se detecta como reúso y el usuario vuelve a iniciar sesión. Se acepta: el resultado es seguro (la familia se revoca), aunque incómodo.
+
+**Intento guardado** (`billetera.intento` en SecureStore, D-17, §6.2): `{ usuarioId, llave, cuerpo, fase, transferenciaId?, codigoExpiraEn?, codigoSimulado?, codigo? }`. Mide menos de 1 KB, por debajo del límite práctico de SecureStore (unos 2 KB por valor en iOS). El campo `codigo` solo existe mientras la confirmación está en vuelo.
+
+**Motor de reintentos:**
+
+| Resultado de la petición | Acción |
+|---|---|
+| `201`, `202` o `422` | Resuelve (§6.2): comprobante, verificación del estado real o captura del código, o rechazo |
+| Error de red, timeout de 15 s, `5xx` o `503` | Reintenta con la misma llave a 1, 2, 4, 8 y 16 s. Si `NetInfo` detecta que volvió la conexión, cancela la espera y reintenta de inmediato |
+| `401` | Espera la promesa de refresh y reintenta sin consumir un turno de espera (R-4.29). Si el refresh falla, conserva el intento y lleva al login; al volver a entrar el mismo usuario, se reanuda |
+| Otro `4xx` (`400`, `404`) | Error definitivo: muestra el mensaje y borra el intento. No ocurre con datos congelados de un intento válido |
+| Se agotan los reintentos | "Estado desconocido" con un solo botón, "Verificar de nuevo", que reinicia la serie con la misma llave (R-4.30) |
+
+Un `500` también se reintenta: no hay forma de saber si la transacción alcanzó a confirmarse, y repetir con la misma llave es seguro (D-03).
+
+**Contenido oculto en segundo plano** (RNF-21; cierra la rama "móvil en segundo plano" del interrogatorio):
+
+- Un componente en la raíz escucha `AppState`. Cuando el estado deja de ser `active` (`inactive` en iOS al abrir el selector de apps, `background` en ambos), pinta una capa opaca a pantalla completa con el logo, por encima de toda la navegación. Además, marca el contenido de abajo como oculto para la accesibilidad, para que no lo lea un lector de pantalla.
+- En Android, `expo-screen-capture` (`preventScreenCaptureAsync`) activa `FLAG_SECURE`: la miniatura de recientes sale en negro y se bloquean las capturas **y la grabación** de pantalla. Lo controla la variable `EXPO_PUBLIC_BLOQUEAR_CAPTURAS`:
+  - `true` en producción: el perfil de compilación de producción de EAS la fija, y la app usa `true` si la variable falta.
+  - `false` en desarrollo (`mobile/.env` de ejemplo), porque `FLAG_SECURE` impediría grabar el video de la entrega.
+  - La capa opaca de `AppState` **no** depende de esta variable: está siempre activa.
+- En iOS, la capa cubre la instantánea que el sistema toma al pasar a `inactive`.
+- La capa se quita al volver a `active`. Desbloquear con biometría queda como tarea opcional (`expo-local-authentication`, D-08).
+
+**Pruebas de la app móvil** (`jest-expo`):
+
+- RNF-26: un `fetch` simulado falla dos veces y a la tercera responde `201`. Con temporizadores falsos se verifica que las tres peticiones llevan la misma `Idempotency-Key` y que la app muestra el comprobante.
+- Una respuesta `202` en un reintento lleva a `GET /transferencias/{id}` antes de mostrar la captura del código.
+- Un intento en fase `confirmacion` reintenta la confirmación, y nunca la creación.
+- Un intento guardado de otro usuario no se envía (R-4.31).
+- El cambio de `AppState` a `inactive` muestra la capa y oculta los saldos.
+- La recuperación de `codigoSimulado` desde el intento guardado (DD-25).
+- Una prueba de lint verifica que importar `AsyncStorage` falla (DD-42).
+
+> **DD-44 · Aprobada · Ocultar el contenido en segundo plano con una capa por `AppState` y `FLAG_SECURE` en Android**
+> **Contexto:** RNF-21 pide ocultar saldos, movimientos y transferencias al pasar a segundo plano, incluida la vista previa del selector de apps. El interrogatorio dejó el cómo para el diseño.
+> **Opciones:** (1) solo una capa con `AppState`; (2) solo `FLAG_SECURE`; (3) las dos.
+> **Decisión:** las dos. La capa responde a `inactive` y `background` y está siempre activa. En Android, `FLAG_SECURE` se activa con `expo-screen-capture` según `EXPO_PUBLIC_BLOQUEAR_CAPTURAS`: activo en producción (también si la variable falta) y desactivable en desarrollo, porque bloquea la grabación de pantalla que exige el video de la entrega.
+> **Motivo:** en iOS la instantánea del selector se toma al pasar a `inactive`, y solo una capa pintada en ese momento la cubre. En Android, el sistema puede tomar la miniatura antes de que React pinte la capa, y `FLAG_SECURE` la oscurece desde el sistema operativo, sin depender del momento del render.
+
+> **DD-45 · Aprobada · Política de reintentos y persistencia de la sesión en móvil**
+> **Contexto:** D-17 fija la espera exponencial, `NetInfo`, los 15 s y "Estado desconocido", pero no qué respuestas se reintentan ni en qué orden se guardan los tokens.
+> **Decisión:**
+> - Se reintentan los errores de red, el timeout y todo `5xx`.
+> - Un `401` refresca y reintenta sin consumir espera.
+> - Un `4xx` distinto de `401` y `422` es definitivo.
+> - El refresh rotado se escribe en SecureStore antes de usar el access nuevo.
+> **Motivo:** después de un `5xx`, el cliente no puede saber si el servidor confirmó la transacción, y la llave hace seguro repetir. Un `4xx` de validación no cambia al repetir. Escribir el refresh primero minimiza la ventana en la que un cierre forzado de la app dejaría guardado un refresh ya usado; si ocurre, el resultado es seguro (revocación y nuevo login).
+
+---
+
+## 14. Estrategia de pruebas y CI
+
+### 14.1 Niveles
+
+| Nivel | Paquete y herramienta | Qué cubre | Requisitos |
+|---|---|---|---|
+| Unitarias | `shared`, Vitest | `validarClabe` y `digitoVerificador` (incluidos el dígito 0 y la CLABE de Fondeo), `montoTextoACentavos`, `formatearMXN`, `centavosATextoDecimal`, `instanteIso`, esquemas Zod, prueba de tipos contra los tipos generados (DD-27) | RNF-22, R-3.4, R-4.33, R-2.5 |
+| Unitarias | `api`, Vitest | Dominio puro: clasificación, orden de validación (DD-31), hash de petición (§6.2), `respuestaDeTransferencia`, contraparte (§8.1), cursor (§8.3), construcción de la consulta del historial (DD-37), CSV (§9), enmascarado (§10.1), configuración (§2.4) | RNF-22, RNF-15 |
+| Integración | `api`, Vitest + Supertest contra `billetera_test` | Todos los flujos HTTP contra PostgreSQL real (§14.2) | RNF-23 |
+| Concurrencia | `api`, Vitest | 100 transferencias simultáneas y escenarios de §14.3 | RNF-24 |
+| Componentes | `web`, Vitest + Testing Library + `vitest-axe` | Flujo de transferencia y pantallas (§13.2) | RNF-25, RNF-19 |
+| Componentes | `mobile`, `jest-expo` + Testing Library de React Native | Reintentos, reanudación y segundo plano (§13.3) | RNF-26, RNF-21 |
+
+### 14.2 Integración contra PostgreSQL
+
+**Preparación.** Un `globalSetup` aplica las migraciones a `billetera_test` con el rol dueño. Cada archivo de pruebas vacía las tablas de datos (`TRUNCATE … CASCADE`, conservando Fondeo) y crea sus usuarios. La API de prueba se conecta como `billetera_app`, igual que en producción, con `RelojFijo` cuando la prueba controla la hora y `ProveedorOtpSimulado`.
+
+**Invariantes después de cada prueba.** Un `afterEach` global verifica, como el rol dueño:
+
+- `saldo_centavos = SUM(asiento.monto_centavos)` para toda cuenta (D-01);
+- `SUM(saldo_centavos) = 0` sobre todas las cuentas (D-02);
+- ninguna transferencia `APLICADA` sin sus dos asientos, ni asientos en una no aplicada (DD-17).
+
+Una prueba que deje la base fuera de cuadre falla, aunque sus propias aserciones pasen.
+
+**Cobertura mínima por área**
+
+| Área | Casos | Requisitos |
+|---|---|---|
+| Registro | Crea usuario, dos cuentas con CLABE válida, fondeo y eventos. Si se fuerza un fallo dentro de la transacción, no queda nada. Correo duplicado: `409`. Rate limit | R-1.1 a R-1.5, R-1.18 |
+| Sesión | Login correcto e incorrecto con el mismo `401`; rotación; reúso que revoca la familia y audita; vencimiento absoluto (DD-30); cookie con sus atributos y sin refresh en el cuerpo para la web; `X-Requested-With` obligatorio; logout | R-1.6 a R-1.13, R-1.16 |
+| Cuentas y beneficiarios | Solo las propias; ajenas dan `404`; Fondeo nunca aparece; los tres pasos de validación de la CLABE en orden; `clabe-not-found`; duplicados `409`; CLABE propia permitida | R-2.1 a R-2.4, R-3.1 a R-3.11 |
+| Transferencias | Aplicada (`201`, saldos y asientos); saldo insuficiente (`422`, fila `RECHAZADA` sin asientos); misma cuenta (`422` y rechazo también por SQL directo); destino ajeno `404`; traspaso sin código y fuera del límite | R-4.1 a R-4.10 |
+| Idempotencia | Repetición idéntica (mismo código y cuerpo, salvo `codigoSimulado`, DD-25); cuerpo distinto `422`; misma llave con dos usuarios; repetición de un `202` después de aplicar la transferencia (DD-32); reintento tras `503` | R-4.13 a R-4.17, R-4.19 |
+| Límite diario | Exactamente en el límite; un centavo más; traspasos y depósitos no cuentan; medianoche con `RelojFijo` (los cuatro escenarios de §6.4) | R-6.1 a R-6.7 |
+| Código | Umbral estricto; `202` sin mover dinero; correcto aplica; incorrecto cuenta y audita aunque la respuesta sea `422`; tercer fallo agota; vencido expira al confirmar y al consultar; confirmar una aplicada repite el `201`; confirmar una ajena da `404` | R-6.8 a R-6.17 |
+| Historial | Orden; tamaño de página; `siguienteCursor` nulo al final; 25 movimientos con el mismo instante; filtros de fecha en hora local; filtro por tipo; cursor de otros filtros o de otra cuenta da `invalid-cursor` | R-5.1 a R-5.10 |
+| Estado de cuenta | Casos de §9 | R-B1.1 a R-B1.5 |
+| Integridad y permisos | Tablas de DD-17 y DD-18; `search_path` de las funciones `SECURITY DEFINER` | RNF-06, RNF-07, RNF-11 |
+| Errores | Cada `type` del catálogo (§7.2); error interno sin filtraciones (§7.4); cada respuesta validada contra `openapi.yaml` (DD-27) | RNF-01 |
+| Logs y auditoría | Prueba de fugas (§10.1); eventos de cada flujo (§10.2) | RNF-11, RNF-12 |
+
+### 14.3 Concurrencia
+
+| Escenario | Configuración | Verifica | Requisitos |
+|---|---|---|---|
+| **100 transferencias simultáneas desde una cuenta** | Pool de 10 conexiones. Saldo inicial para unas 60 transferencias de monto fijo, todas a tercero bajo el umbral y con el límite configurado alto para la prueba | `aplicadas × monto + saldo final = saldo inicial`; aplicadas + rechazadas = 100; cada rechazada con `SALDO_INSUFICIENTE`; `saldo = SUM(asientos)` y `SUM(saldos) = 0`; **cero deadlocks**, contando los reintentos por `40P01` en el log `warn` | RNF-24, R-4.18 |
+| Cruzadas | A envía a B y B envía a A, 50 de cada lado, al mismo tiempo | Cero deadlocks e invariantes | D-12 |
+| Límite con dos cuentas | Un usuario lanza a la vez transferencias a tercero desde `Principal` y desde `Ahorro`, que juntas superan el límite | Lo aplicado nunca supera el límite | R-6.4 |
+| Misma llave | 10 peticiones simultáneas con la misma llave y el mismo cuerpo | Una sola transferencia y 10 respuestas idénticas | R-4.16 |
+| Cursor con escrituras | Transferencias concurrentes hacia una cuenta mientras se recorre su historial | Sin huecos ni repetidos (DD-36) | R-5.4 |
+
+### 14.4 Trazabilidad en las pruebas
+
+El nombre de cada prueba empieza con los IDs que verifica: `it('R-4.14 repetición con la misma llave devuelve el mismo cuerpo', …)`. Así, `grep "R-4.14"` lleva del requisito a su prueba, y la matriz de §17 se puede comprobar contra el código.
+
+### 14.5 CI (GitHub Actions)
+
+`.github/workflows/ci.yml` corre en cada `push` y en cada pull request contra `main`, con Node 24 y la caché de npm (RNF-29).
+
+| Job | Pasos |
+|---|---|
+| `calidad` | `npm ci`; compilar `shared`; `npm run lint`; `npm run typecheck`; `redocly lint specs/openapi.yaml`; `npm run gen:tipos` y `git diff --exit-code` (DD-27) |
+| `unitarias` | Pruebas de `shared`, `api` (unitarias) y `web` |
+| `integracion` | *Service container* `postgres:17` con `docker/postgres/init.sql` montado; `npm run test:integracion` (integración y concurrencia) |
+| `movil` | Pruebas de `mobile` con `jest-expo` |
+
+Los cuatro jobs son obligatorios para fusionar a `main`, y `main` debe quedar en verde (RNF-29).
+
+> **DD-46 · Aprobada · Invariantes después de cada prueba de integración e IDs en el nombre de cada prueba**
+> **Contexto:** RNF-23 y RNF-24 piden cubrir idempotencia, límite, saldo y concurrencia; RNF-33 pide trazabilidad hasta la prueba.
+> **Decisión:**
+> - Un `afterEach` global verifica las invariantes de D-01, D-02 y DD-17 después de **cada** prueba de integración.
+> - Cada prueba nombra en su título los IDs `R-`, `RNF-` o `DD-` que verifica.
+> - El CI tiene cuatro jobs obligatorios.
+> **Motivo:** una prueba de un flujo pensaría en sus propias aserciones y no en el cuadre global. El `afterEach` convierte cada prueba en una prueba de "el dinero siempre cuadra", que es lo que el enunciado más valora. Los IDs en el título cierran la cadena requerimiento → diseño → tarea → commit → prueba sin herramientas extra.
+
+---
+
+## 15. Resolución de pendientes
+
+### 15.1 Ramas del interrogatorio y pendientes de `requirements.md` §12
+
+| Origen | Pendiente | Resuelto en | Decisión |
+|---|---|---|---|
+| Rama del interrogatorio (`ai-log.md`) | Parámetros de rate limiting | §11 | DD-41 |
+| Rama del interrogatorio | Catálogo de auditoría | §10.2 | DD-40 |
+| Rama del interrogatorio | Enmascaramiento en logs | §10.1 | DD-39 |
+| Rama del interrogatorio | Catálogo de errores RFC 7807 | §4.1, §7 | DD-23, DD-35 |
+| Rama del interrogatorio | Ocultar contenido en segundo plano en móvil | §13.3 | DD-44 |
+| Rama del interrogatorio | Política de contraseñas | §5.1 | DD-28 |
+| `requirements.md` §12.1 | Política de contraseña | §5.1 | DD-28 |
+| `requirements.md` §12.2 | Códigos HTTP del correo y del beneficiario duplicados | §4.1, §7.2 | DD-23 (`409`) |
+| `requirements.md` §12.3 | Longitudes de nombre, alias, concepto y referencia | §3.2, §6.7 | DD-16 |
+| `requirements.md` §12.4 | Umbrales y ventanas del rate limit | §11 | DD-41 |
+| `requirements.md` §12.5 | Contenido del comprobante | §6.6 | DD-34 |
+| `requirements.md` §12.6 | Datos enmascarados en logs, incluida la CLABE | §10.1 | DD-39 |
+| `requirements.md` §12.7 | CSV de un mes sin movimientos | §9 | DD-38 |
+
+Queda un solo pendiente abierto, a propósito: **§8.5 `EXPLAIN ANALYZE`**, que depende del seed y se cierra en su tarea de implementación.
+
+### 15.2 Para "qué haría con más tiempo" del README
+
+Además de los elementos de `requirements.md` §11, el diseño agregó estos (RNF-31):
+
+| Elemento | Origen |
+|---|---|
+| Registro con verificación por correo, para que el registro no revele qué correos existen | DD-23 |
+| Volver a calcular el hash de una contraseña al subir los parámetros de argon2id | DD-28 |
+| Llave de idempotencia también en la confirmación, para que reintentar un código incorrecto no consuma otro intento | §6.2 |
+| Rate limit general por usuario en las rutas autenticadas | §11 |
+| Firma asimétrica del access (RS256 o EdDSA) cuando otro servicio tenga que verificar tokens | DD-29 |
+| Varias subcuentas de Fondeo para repartir el punto caliente del registro | §6.3, D-20 |
+| Desbloqueo biométrico en móvil, si no entra como tarea opcional | §13.3, D-08 |
+
+### 15.3 Para `docs/aws-deploy.md`
+
+El diseño dejó estos puntos para la propuesta de AWS (RNF-30):
+
+| Punto | Origen |
+|---|---|
+| `TRUST_PROXY` con el número exacto de saltos detrás de CloudFront y el ALB | §11, DD-41 |
+| Redis (ElastiCache) como almacén del rate limit con varias instancias | DD-41 |
+| Destino y retención de los logs y de la auditoría | §10 |
+| Secretos (`JWT_SECRETO`, `OTP_HMAC_SECRETO`, credenciales de los dos roles) en Secrets Manager, con migraciones ejecutadas por el rol dueño desde el pipeline | §2.4, §3.4 |
+| Punto caliente de Fondeo en el escenario ×100 | §6.3, D-20 |
+| Métricas, trazas y alarmas | §10.3 |
+
+---
+
+## 16. Decisiones nuevas de diseño
+
+Las 46 decisiones tomadas en este documento. La columna "Relación" indica qué decisión o requisito existente precisan, completan o exceptúan; las que no tienen relación solo resuelven algo que `decisiones.md` no cubría. Esta tabla es la única fuente de las decisiones de diseño (§0.2); `decisiones.md` remite aquí.
+
+| ID | Decisión | Sección | Relación | Estado |
+|---|---|---|---|---|
+| DD-01 | Versiones mayores del stack | §1.1 | Enunciado Fase 2 | Aprobada |
+| DD-02 | Librerías de la API | §1.1 | — | Aprobada |
+| DD-03 | Librerías de los clientes | §1.1 | — | Aprobada |
+| DD-04 | Ejecutores de pruebas | §1.1 | — | Aprobada |
+| DD-05 | Compilación del paquete compartido y ejecución de migraciones | §1.2, §3.5 | Enunciado Fase 2 (migraciones con TypeORM) | Aprobada |
+| DD-06 | Base de datos local en Docker con base de pruebas separada | §1.3 | — | Aprobada |
+| DD-07 | Las marcas de tiempo de negocio salen del `Reloj` y viajan como texto | §2.1 | Precisa D-11 y D-15; precisada por DD-36 | Aprobada |
+| DD-08 | Capas con regla de imports y composición manual | §2.1 | RNF-16 | Aprobada |
+| DD-09 | El request ID viaja en el header, no en el cuerpo del problem | §2.2 | Protege R-4.14 | Aprobada |
+| DD-10 | Timeouts de bloqueo y de sentencia responden `503` sin reintento en el servidor | §2.3 | Precisa D-12 | Aprobada |
+| DD-11 | Convenciones de tipos y llaves | §3.1 | — | Aprobada |
+| DD-12 | Columnas de la transferencia de fondeo | §3.2 | Precisa D-02 | Aprobada |
+| DD-13 | Tipo de movimiento `FONDEO_SALIDA` | §3.2 | **Completa D-09** | Aprobada |
+| DD-14 | El código usa `transferencia_id` como llave primaria, sin columna `usado` | §3.2 | Precisa D-07 | Aprobada |
+| DD-15 | La auditoría no tiene llaves foráneas | §3.2 | — | Aprobada |
+| DD-16 | Longitudes y caracteres de los campos de texto | §3.2 | Cierra `requirements.md` §12.3 | Aprobada |
+| DD-17 | La base valida la clasificación y la coherencia completa de cada transferencia | §3.3 | Amplía D-04 y D-14 | Aprobada |
+| DD-18 | El rol de la API no puede escribir saldos ni borrar nada | §3.4 | Amplía D-01 | Aprobada |
+| DD-19 | Generación de CLABE aleatoria y validación también en la base | §3.6 | Precisa D-19 | Aprobada |
+| DD-20 | Seed en dos fases y datos de volumen fuera del límite diario | §3.7 | Precisa D-13 y D-20 | Aprobada |
+| DD-21 | JSON en camelCase, sin versión en la ruta y listas envueltas | §4.1 | Renombra el campo de R-4.8, R-4.35 y D-18 a `montoCentavos` | Aprobada |
+| DD-22 | Formato de los instantes en la API | §4.1 | — | Aprobada |
+| DD-23 | Formato del `type` de los problemas y códigos de los duplicados | §4.1 | Precisa R-4.3; cierra §12.2; concesión frente a R-1.7 | Aprobada |
+| DD-24 | Transporte del refresh token entre web y móvil | §4.2 | Precisa D-06 | Aprobada |
+| DD-25 | La repetición de un `202` no incluye `codigoSimulado` | §4.2 | **Única excepción a R-4.14** | Aprobada |
+| DD-26 | El destino de una transferencia es una unión discriminada | §4.2 | — | Aprobada |
+| DD-27 | Verificación del contrato y documentación solo fuera de producción | §4.3 | RNF-18, RNF-28 | Aprobada |
+| DD-28 | Política de contraseñas y parámetros de argon2id | §5.1 | Cierra §12.1 | Aprobada |
+| DD-29 | JWT con HS256 y sin revocación del access | §5.2 | Precisa D-05 | Aprobada |
+| DD-30 | La familia de sesión vence 7 días después del login | §5.3 | Precisa D-05 | Aprobada |
+| DD-31 | Saldo y límite se validan también al crear una pendiente, saldo primero | §6.1 | Precisa D-14 | Aprobada |
+| DD-32 | La repetición devuelve la respuesta original; reanudación por fase en los clientes | §6.2 | Precisa D-03, **D-16 y D-17** | Aprobada |
+| DD-33 | El HMAC del código incluye el id de la transferencia; el fallo informa los intentos restantes | §6.5 | Precisa D-07 | Aprobada |
+| DD-34 | Contenido del comprobante | §6.6 | Cierra §12.5 | Aprobada |
+| DD-35 | Traducción de errores por nombre de restricción, con textos fijos | §7.3 | RNF-01 | Aprobada |
+| DD-36 | El instante de aplicación se lee con `clock_timestamp()` después de bloquear las cuentas | §8.3 | **Precisa DD-07 y D-11** | Aprobada |
+| DD-37 | Consulta del historial con fragmentos fijos y contraparte sin datos del titular | §8.4 | Precisa D-11 | Aprobada |
+| DD-38 | Formato del CSV con saldo acumulado, mes vacío y respuestas sin caché | §9 | Precisa D-08; cierra §12.7 | Aprobada |
+| DD-39 | Cuerpos nunca registrados, enmascarado de correo y CLABE, contexto por `AsyncLocalStorage` | §10.1 | Cierra §12.6 | Aprobada |
+| DD-40 | Catálogo de auditoría y auditoría dentro de la transacción del negocio | §10.2 | Amplía RNF-11 | Aprobada |
+| DD-41 | Umbrales del rate limit y almacén en memoria | §11 | Cierra §12.4 | Aprobada |
+| DD-42 | Reglas de lint para el dinero y el almacenamiento móvil | §13.1 | Amplía D-18 | Aprobada |
+| DD-43 | Cliente web: refresh con Web Locks, una repetición tras `401`, transferencia sin `useMutation`, `axe` | §13.2 | Precisa D-05, D-06 y D-16 | Aprobada |
+| DD-44 | Ocultar el contenido en segundo plano con una capa por `AppState` y `FLAG_SECURE` en Android | §13.3 | RNF-21 | Aprobada |
+| DD-45 | Política de reintentos y persistencia de la sesión en móvil | §13.3 | Precisa D-17 | Aprobada |
+| DD-46 | Invariantes después de cada prueba de integración e IDs en el nombre de cada prueba | §14.5 | RNF-23, RNF-24, RNF-33 | Aprobada |
+
+---
+
+## 17. Matriz de trazabilidad
+
+Cada criterio de `requirements.md` y la sección de este documento que lo resuelve. Las pruebas de cada criterio se localizan por su ID en el nombre de la prueba (§14.4).
+
+### 17.1 HU-1 · Registro e inicio de sesión
+
+| Criterio | Secciones |
+|---|---|
+| R-1.1 | §2.1 (`identidad`), §3.2 (`cuenta`), §3.6, §12.1 |
+| R-1.2 | §6.3, §10.2, §12.1 |
+| R-1.3 | §2.3, §12.1, §14.2 |
+| R-1.4 | §4.1 (DD-23), §7.2, §7.3 |
+| R-1.5 | §5.1, §7.2 |
+| R-1.6 | §5.2, §5.3 |
+| R-1.7 | §5.1, §7.2 |
+| R-1.8 | §5.3, §12.2 |
+| R-1.9 | §5.3, §10.2, §12.2 |
+| R-1.10 | §5.3 |
+| R-1.11 | §2.2, §5.2 |
+| R-1.12 | §5.3, §6.2, §13.2, §13.3 |
+| R-1.13 | §4.2 (DD-24), §5.3 |
+| R-1.14 | §13.2 |
+| R-1.15 | §5.3, §13.2 |
+| R-1.16 | §5.4 |
+| R-1.17 | §5.3, §13.3 |
+| R-1.18 | §11 |
+
+### 17.2 HU-2 · Cuentas y saldo
+
+| Criterio | Secciones |
+|---|---|
+| R-2.1 | §3.2, §4.2 |
+| R-2.2 | §3.3 |
+| R-2.3 | §3.2, §4.2, §6.1 |
+| R-2.4 | §7.2 |
+| R-2.5 | §13.1 |
+| R-2.6 | §13.2, §13.3 |
+
+### 17.3 HU-3 · Beneficiario con CLABE
+
+| Criterio | Secciones |
+|---|---|
+| R-3.1 | §3.2 (`beneficiario`), §4.2 |
+| R-3.2 | §3.6, §4.2, §13.1 |
+| R-3.3 | §7.2, §13.1 |
+| R-3.4 | §3.6, §13.1 |
+| R-3.5 | §3.3 (`validar_beneficiario`), §7.2 |
+| R-3.6 | §4.2, §6.6, §8.1 |
+| R-3.7 | §3.2, §7.3 |
+| R-3.8 | §3.3, §4.2 (DD-26) |
+| R-3.9 | §11 |
+| R-3.10 | §13.1, §13.2 |
+| R-3.11 | §4.2, §7.2 |
+| R-3.12 | §3.6, §3.7 |
+
+### 17.4 HU-4 · Transferencia
+
+| Criterio | Secciones |
+|---|---|
+| R-4.1 | §3.3, §6.1, §12.3 |
+| R-4.2 | §3.3 (DD-17), §6.1 |
+| R-4.3 | §6.1, §6.2, §7.2 |
+| R-4.4 | §3.2, §6.1 |
+| R-4.5 | §6.1, §6.4 |
+| R-4.6 | §6.1, §7.2 |
+| R-4.7 | §3.3, §6.1 |
+| R-4.8 | §4.1, §6.7 |
+| R-4.9 | §3.2, §6.7 |
+| R-4.10 | §4.2, §6.5 |
+| R-4.11 | §6.6, §13.2, §13.3 |
+| R-4.12 | §12.3, §13.2, §13.3 |
+| R-4.13 | §6.2 |
+| R-4.14 | §6.2, §12.5 |
+| R-4.15 | §6.2 |
+| R-4.16 | §6.1, §6.2, §12.5 |
+| R-4.17 | §3.2, §6.2 |
+| R-4.18 | §6.1, §6.3 |
+| R-4.19 | §2.3, §6.3 |
+| R-4.20 a R-4.25 | §6.2 (reanudación), §12.6, §13.2 |
+| R-4.26 a R-4.32 | §6.2 (reanudación), §12.7, §13.3 |
+| R-4.33 a R-4.35 | §4.1, §6.7, §13.1 |
+
+### 17.5 HU-5 · Historial
+
+| Criterio | Secciones |
+|---|---|
+| R-5.1 | §8.1 |
+| R-5.2 | §8.1 |
+| R-5.3 | §4.2, §8.3 |
+| R-5.4 | §8.3 (DD-36) |
+| R-5.5 | §8.4 |
+| R-5.6 | §8.1, §8.2 |
+| R-5.7 | §8.3 |
+| R-5.8 | §8.1 |
+| R-5.9 | §8.1 |
+| R-5.10 | §8.1 |
+| R-5.11 | §13.2 |
+| R-5.12 | §13.3 |
+
+### 17.6 HU-6 · Límite diario y código
+
+| Criterio | Secciones |
+|---|---|
+| R-6.1 | §6.4 |
+| R-6.2 | §6.1, §7.2 |
+| R-6.3 | §6.4 |
+| R-6.4 | §6.1, §6.3 |
+| R-6.5 | §6.4 |
+| R-6.6 | §6.4, §8.3 (DD-36) |
+| R-6.7 | §6.4 |
+| R-6.8 | §6.1, §6.5 |
+| R-6.9 | §6.1 |
+| R-6.10 a R-6.14 | §6.5 |
+| R-6.15 | §6.5, §13.2 |
+| R-6.16 | §6.5, §10.1 |
+| R-6.17 | §2.4, §4.2 (DD-25) |
+| R-6.18 | §13.2, §13.3 |
+
+### 17.7 HU-B1 · Estado de cuenta CSV
+
+| Criterio | Secciones |
+|---|---|
+| R-B1.1 a R-B1.5 | §9 |
+| R-B1.6 | §13.2 |
+
+### 17.8 Requisitos no funcionales
+
+| Requisito | Secciones |
+|---|---|
+| RNF-01 | §7 |
+| RNF-02 | §5.2, §5.3 |
+| RNF-03 | §5.1 |
+| RNF-04 | §11 |
+| RNF-05 | §5.4 |
+| RNF-06 | §3.2, §3.3 |
+| RNF-07 | §3.3, §3.4 |
+| RNF-08 | §2.3, §6.3 |
+| RNF-09 | §2.3 (parsers de `pg`), §13.1 |
+| RNF-10 | §2.1 (DD-07), §6.4, §8.3 (DD-36) |
+| RNF-11 | §3.4, §10.2 |
+| RNF-12 | §10.1 |
+| RNF-13 | §8.3 |
+| RNF-14 | §8.2, §8.5 |
+| RNF-15 | §2.4 |
+| RNF-16 | §1.1, §2, §3.5 |
+| RNF-17 | §13.2, §13.3 |
+| RNF-18 | §4.3, §13.1 |
+| RNF-19 | §13.2 |
+| RNF-20 | §13.1 (DD-42), §13.3 |
+| RNF-21 | §13.3 |
+| RNF-22 a RNF-24 | §14.1 a §14.3 |
+| RNF-25 | §13.2, §14.1 |
+| RNF-26 | §13.3, §14.1 |
+| RNF-27 | §1.3, §3.7 |
+| RNF-28 | §4.3 |
+| RNF-29 | §14.5 |
+| RNF-30 | Fuera de este documento: `docs/aws-deploy.md`. Sus insumos de diseño están en §15.3 |
+| RNF-31 | Fuera de este documento: `README.md`. Sus insumos de diseño están en §1.3 y §15.2 |
+| RNF-32 | §1.3; las instrucciones van en el README |
+| RNF-33 | §0, §14.4; la trazabilidad de tareas y commits va en `tasks.md` |
+
+### 17.9 Casos borde del enunciado
+
+| Caso | Secciones |
+|---|---|
+| CB-1 Doble clic en "Enviar" | §6.2, §12.5, §12.6, §13.2 |
+| CB-2 Pérdida de red en móvil | §6.2, §12.7, §13.3 |
+| CB-3 Redondeo | §2.3, §4.1, §9, §13.1 |
+| CB-4 Límite que cruza medianoche | §6.4, §8.3 (DD-36) |
+| CB-5 Transferencia a la propia cuenta | §3.2, §3.3, §6.1 |
