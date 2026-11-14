@@ -196,6 +196,37 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 ---
 
+### Sesión 5 — 2026-11-14 · Fase de Tareas (`tasks.md`)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `spec-driven-development`, invocada por mí con `/spec-driven-development`. Tercera de las tres fases (Requisitos → Diseño → **Tareas**).
+
+**Método: lista primero, detalle después.**
+1. La IA leyó `requirements.md`, `design.md`, `decisiones.md` y el enunciado, y me mostró solo la lista de tareas agrupada por fase, sin el detalle.
+2. Aprobé la lista con ajustes (abajo).
+3. La IA escribió el detalle de cada tarea: etiqueta, prioridad, dependencias, criterios R/RNF, decisiones DD, alcance, verificación y commit sugerido. Al final agregó la matriz de cobertura.
+
+**Prompt clave:**
+> "Fase de Tareas de la billetera digital MXN. Lee: @specs/requirements.md, @specs/design.md, @specs/decisiones.md y @docs/enunciado.md. Escribe specs/tasks.md con un plan de implementación en tareas pequeñas y verificables: cada tarea con ID […], etiqueta api, web, mobile, shared, docs o ci, los criterios R/RNF que cubre, las DD que implementa y cómo se verifica […]. Ordenadas por dependencias, empezando por el esqueleto del monorepo, Docker, migraciones y shared. Incluye tareas para el seed, para llenar §8.5 con el EXPLAIN ANALYZE, para README, docs/aws-deploy.md, el video y CI. […] Al final, una matriz que muestre que cada criterio R/RNF tiene al menos una tarea. Muéstrame primero la lista de tareas agrupada por fase, sin el detalle, y espera mi aprobación."
+
+**Resultado:** `specs/tasks.md` con 52 tareas en 9 fases y una matriz de cobertura: cada R y cada RNF tiene al menos una tarea, y además hay tablas de DD → tareas y de casos borde → tareas.
+
+**Ajustes que hice a la lista:**
+
+| Ajuste | Cómo quedó en `tasks.md` |
+|---|---|
+| Prioridad P1 (dinero que cuadra y entregables obligatorios) o P2 (bonus o mejora), con una línea de corte: si el tiempo no alcanza, las P2 se omiten y van a "qué haría con más tiempo" | Tres tareas P2 (CSV en la API, botón del CSV en web y biometría) agrupadas en una fase de bonus, después de la línea de corte. Ninguna P1 depende de una P2, y la fase de entrega se ejecuta siempre |
+| La app móvil toma la URL de la API de `EXPO_PUBLIC_API_URL`; con Expo Go en un teléfono físico debe ser la IP de la computadora en la red local, no `localhost` | Va en la verificación de T-MOB-01: con la IP de la LAN, Expo Go recibe `/api/health`, y con `localhost` falla. Si la variable falta, la app muestra un error de configuración. También va en el README (T-DOC-02) |
+| El README indica los requisitos previos: Node 24, Docker Desktop con WSL2 en Windows y Expo Go | Agregado al alcance de T-DOC-02 |
+
+**Lo que agregó la IA y acepté:**
+- **API en `0.0.0.0` y regla del firewall.** Para que el teléfono llegue a la API, no basta con la IP correcta: la API escucha en todas las interfaces (T-MOB-01) y el README explica cómo abrir el puerto 3000 en el firewall de Windows para redes privadas (T-DOC-02).
+- **Pruebas filtradas por ID.** Como cada prueba lleva en su nombre los IDs que verifica (DD-46), la verificación de cada tarea indica el filtro: `npx vitest run -t "R-4.14"`.
+- **Script de trazabilidad.** T-DOC-04 incluye `npm run trazabilidad`, que falla si algún R o RNF no tiene una prueba con su ID o un commit que lo cite. Así la trazabilidad requerimiento → tarea → commit → prueba se comprueba con un comando y no solo a mano.
+
+**Commits relacionados:** `fbd41b3` (`tasks.md`) y el commit que agrega esta entrada.
+
+---
+
 ## Propuestas inseguras o incorrectas con el dinero
 
 Registro específico de lo que la IA propuso y era riesgoso para la integridad del dinero.
