@@ -209,7 +209,8 @@ Todos los montos están en **centavos enteros** (D-18).
 - **R-5.2** La API DEBE devolver páginas de 20 movimientos por defecto y aceptar como máximo 100; SI el tamaño pedido está fuera de 1 a 100, ENTONCES DEBE responder con un error de validación. _(D-11)_
 - **R-5.3** La respuesta DEBE tener la forma `{ items, siguienteCursor }`, con `siguienteCursor = null` en la última página. _(D-11)_
 - **R-5.4** CUANDO el cliente pide la página siguiente con `siguienteCursor`, la API DEBE devolver los movimientos siguientes sin omitir ni repetir ninguno, aunque haya movimientos con la misma fecha y hora y aunque entren movimientos nuevos entre una página y otra. _(D-11)_
-  - Dado los dos asientos de un traspaso, con el mismo instante, que caen en el borde de una página, Cuando se recorren todas las páginas, Entonces cada asiento aparece exactamente una vez.
+  - Dado una cuenta con varios movimientos con el mismo instante que caen en el borde de una página, Cuando se recorren todas las páginas, Entonces cada movimiento aparece exactamente una vez.
+  - _Corregido durante la fase de diseño (`design.md` §8.3):_ el ejemplo original eran "los dos asientos de un traspaso", pero esos asientos caen en cuentas distintas y nunca aparecen juntos en el historial de una cuenta.
 - **R-5.5** CUANDO se filtra por `desde` y `hasta`, la API DEBE interpretarlos como días calendario en `America/Mexico_City` e incluir los movimientos del rango `[desde 00:00, hasta + 1 día 00:00)`. SI `desde` es posterior a `hasta`, ENTONCES DEBE responder con un error de validación. _(D-11, D-15)_
 - **R-5.6** CUANDO se filtra por tipo, la API DEBE aceptar `DEPOSITO`, `ENVIO`, `RECEPCION`, `TRASPASO_SALIDA` y `TRASPASO_ENTRADA`, y devolver solo los movimientos de ese tipo. _(D-09)_
 - **R-5.7** SI el cursor está mal formado o se generó con filtros distintos a los de la petición, ENTONCES la API DEBE responder `400` con el problem `invalid-cursor`. _(D-11)_

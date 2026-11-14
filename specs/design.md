@@ -293,7 +293,7 @@ interface Reloj {
   /** Instante actual como texto timestamptz en UTC, con microsegundos. Nunca Date. */
   ahora(tx: EntityManager): Promise<string>;
 }
-// RelojBaseDatos: SELECT now()   (inicio de la transacción, D-11/D-15)
+// RelojBaseDatos: SELECT clock_timestamp()   (se lee después de tomar los bloqueos, DD-36)
 // RelojFijo:      devuelve un valor fijado por la prueba (23:59:59.999999, 00:00:00)
 
 // plataforma/otp
@@ -306,7 +306,7 @@ interface ProveedorOtp {
 > **DD-07 · Aprobada · Las marcas de tiempo de negocio salen del Reloj y viajan como texto**
 > **Contexto:** D-15 pide un reloj inyectable para probar la medianoche, y D-11 prohíbe pasar `creado_en` por `Date`, que solo tiene milisegundos. Si `aplicada_en` saliera del reloj y `creado_en` de `DEFAULT now()`, en las pruebas habría dos relojes distintos.
 > **Decisión:**
-> - Toda marca de negocio (`transferencia.creado_en`, `transferencia.aplicada_en`, `asiento.creado_en`, `codigo_confirmacion.expira_en`) se escribe con el valor de `Reloj.ahora(tx)`, leído una vez por transacción. Los `DEFAULT now()` quedan solo como red para tablas sin reglas de tiempo (sesión, auditoría).
+> - Toda marca de negocio (`transferencia.creado_en`, `transferencia.aplicada_en`, `asiento.creado_en`, `codigo_confirmacion.expira_en`) se escribe con el valor de `Reloj.ahora(tx)`, leído una vez por transacción. _Precisado por DD-36: se lee con `clock_timestamp()` **después** de tomar los bloqueos que protegen la decisión, no al inicio de la transacción._ Los `DEFAULT now()` quedan solo como red para tablas sin reglas de tiempo (sesión, auditoría).
 > - La conexión fija `TimeZone=UTC`. Los parsers de `pg` devuelven `timestamptz` (OID 1184) como **texto**, nunca como `Date`; las columnas de las entidades se tipan como `string`.
 > - El formato del texto en la API se define en §4.1.
 > **Motivo:** un solo origen del tiempo por transacción. La prueba de medianoche controla `aplicada_en` y `creado_en` a la vez, y los microsegundos del cursor nunca se truncan.
@@ -331,7 +331,7 @@ Orden de los middlewares en `app.ts`:
 | 6 | `cookie-parser` | Lee la cookie de refresh | D-06 |
 | 7 | `GET /api/health`, `/api/docs` | Sin autenticación | RNF-28 |
 | 8 | `/api/auth/*` | Rate limit por ruta (§11) y `validar` | HU-1 |
-| 9 | `autenticar` | Verifica el JWT y pone `req.usuarioId`; si falla, `401` | R-1.11 |
+| 9 | `autenticar` | Verifica el JWT y pone `req.usuarioId`; si falla, `401`. Fija `Cache-Control: no-store` en toda respuesta autenticada (DD-38) | R-1.11 |
 | 10 | Rutas de módulos | `validar({ params, query, body, headers })` → controlador | — |
 | 11 | `demoLatencia` | Solo en `POST /transferencias` y `POST /transferencias/{id}/confirmar`, después del caso de uso y antes de responder; solo si `DEMO_LATENCIA_MS > 0` | D-17 |
 | 12 | `noEncontrado` | Cualquier otra ruta → `404 not-found` | RNF-01 |
@@ -1217,10 +1217,10 @@ flowchart TD
     C -- sí --> D{¿Origen = destino?}
     D -- sí --> M[422 misma-cuenta]
     D -- no --> T[[conTransaccion]]
-    T --> L1[ahora = Reloj · bloquea usuario]
+    T --> L1[Bloquea usuario]
     L1 --> L2{¿La llave apareció<br/>mientras esperaba?}
     L2 -- sí --> R
-    L2 -- no --> L3[Bloquea cuentas por id ascendente]
+    L2 -- no --> L3[Bloquea cuentas por id ascendente<br/>ahora = Reloj, DD-36]
     L3 --> S{¿saldo origen ≥ monto?}
     S -- no --> RS[RECHAZADA · SALDO_INSUFICIENTE<br/>422]
     S -- sí --> TP{¿TERCERO?}
@@ -1242,10 +1242,10 @@ flowchart TD
    - Origen igual a destino: `422 misma-cuenta`, sin crear la fila (R-4.4).
    - **Clasificación** (D-04): `TRASPASO` si el dueño de la cuenta destino es el usuario; si no, `TERCERO`.
 3. **Transacción** (`conTransaccion`, §2.3):
-   1. `ahora = Reloj.ahora(tx)` (DD-07).
-   2. Bloquea al usuario: `SELECT id FROM usuario WHERE id = $1 FOR UPDATE` (D-04).
-   3. **Vuelve a buscar la llave.** Dos peticiones con la misma llave son del mismo usuario, así que el bloqueo del paso anterior las pone en fila. La segunda encuentra aquí la fila que confirmó la primera y responde con ella (R-4.16).
-   4. Bloquea las dos cuentas: `SELECT … FROM cuenta WHERE id = ANY($1) ORDER BY id FOR UPDATE` (D-12).
+   1. Bloquea al usuario: `SELECT id FROM usuario WHERE id = $1 FOR UPDATE` (D-04).
+   2. **Vuelve a buscar la llave.** Dos peticiones con la misma llave son del mismo usuario, así que el bloqueo del paso anterior las pone en fila. La segunda encuentra aquí la fila que confirmó la primera y responde con ella (R-4.16).
+   3. Bloquea las dos cuentas: `SELECT … FROM cuenta WHERE id = ANY($1) ORDER BY id FOR UPDATE` (D-12).
+   4. `ahora = Reloj.ahora(tx)`, leído **después** de tener las cuentas (DD-36).
    5. Valida el saldo: `origen.saldo_centavos >= monto`.
    6. Solo si es `TERCERO`: valida el límite (§6.4).
    7. Solo si es `TERCERO` y `monto > UMBRAL_CODIGO_CENTAVOS`: crea la pendiente y su código (§6.5).
@@ -1283,7 +1283,7 @@ Los pasos 5 a 7 usan las filas ya bloqueadas, así que nada puede cambiar el sal
 | Llave nueva | Se procesa (§6.1) | R-4.1 |
 | Misma llave, mismo hash, transferencia ya resuelta o pendiente | La **respuesta original**, reconstruida desde la fila (abajo). Sin mover dinero ni generar código | R-4.14 |
 | Misma llave, hash distinto | `422 idempotency-key-reused`, sin mover dinero | R-4.15 |
-| Dos peticiones simultáneas con la misma llave | El bloqueo del usuario las pone en fila. La segunda encuentra la fila en el paso 3.3 y devuelve lo mismo | R-4.16 |
+| Dos peticiones simultáneas con la misma llave | El bloqueo del usuario las pone en fila. La segunda encuentra la fila en el paso 3.2 y devuelve lo mismo | R-4.16 |
 | Misma llave, dos usuarios | Dos transferencias independientes: la unicidad es por `(usuario_id, llave_idempotencia)` | R-4.17 |
 | Petición sin `Idempotency-Key` o sin formato UUID | `400 validation-error` antes de tocar la base | R-4.13 |
 | Petición rechazada antes de crear la fila (`404`, `422 misma-cuenta`, `400`) | No se guarda nada: un reintento con la misma llave vuelve a evaluarse desde cero | D-14 |
@@ -1386,7 +1386,7 @@ SELECT coalesce(sum(monto_centavos), 0)::bigint AS consumido
 
 ### 6.5 Código de un solo uso
 
-**Generación**, dentro de la transacción de creación (§6.1, paso 7):
+**Generación**, dentro de la transacción de creación (§6.1, paso 3.7):
 
 - `codigo = crypto.randomInt(0, 1_000_000)`, con ceros a la izquierda hasta 6 dígitos.
 - Se guarda `codigo_hmac = HMAC-SHA256(OTP_HMAC_SECRETO, transferenciaId + ":" + codigo)` en hexadecimal, con `expira_en = ahora + 5 minutos` (D-07).
@@ -1396,8 +1396,8 @@ El código nunca se guarda en claro ni se escribe en los logs (R-6.16): `pino` c
 
 **Confirmación** (`POST /transferencias/{id}/confirmar`), en una sola `conTransaccion`:
 
-1. `ahora = Reloj.ahora(tx)`; bloquea al usuario.
-2. Bloquea la transferencia (`WHERE id = $1 AND usuario_id = $2 FOR UPDATE`) y su código. Si no existe o es ajena: `404` (R-6.14).
+1. Bloquea al usuario.
+2. Bloquea la transferencia (`WHERE id = $1 AND usuario_id = $2 FOR UPDATE`) y su código. Si no existe o es ajena: `404` (R-6.14). Después lee `ahora = Reloj.ahora(tx)` para decidir si venció.
 3. Según su estado:
 
 | Estado y condición | Acción | Respuesta |
@@ -1407,7 +1407,7 @@ El código nunca se guarda en claro ni se escribe en los logs (R-6.16): `pino` c
 | Pendiente y `expira_en <= ahora` | Pasa a `RECHAZADA/CODIGO_EXPIRADO` y audita | `422 codigo-expirado` (R-6.12) |
 | Pendiente, código incorrecto, `intentos + 1 < 3` | `intentos + 1` y evento `codigo-incorrecto` | `422 codigo-incorrecto` con `intentosRestantes` |
 | Pendiente, código incorrecto, `intentos + 1 = 3` | `intentos = 3`, evento `codigo-incorrecto`, `RECHAZADA/CODIGO_AGOTADO` y su evento | `422 codigo-agotado` (R-6.11) |
-| Pendiente y código correcto | Bloquea las cuentas por `id` ascendente y vuelve a validar saldo y límite con `ahora` (§6.1, pasos 3.5 y 3.6) | `201`, o `422` por saldo o límite (R-6.10) |
+| Pendiente y código correcto | Bloquea las cuentas por `id` ascendente, **vuelve a leer `ahora`** (DD-36) y con ese valor valida saldo y límite y escribe `aplicada_en` y los asientos (§6.1, pasos 3.4 a 3.6) | `201`, o `422` por saldo o límite (R-6.10) |
 
 4. Confirma la transacción y responde.
 
@@ -1556,5 +1556,538 @@ Los `type` de esta tabla son exactamente el `enum` de `TipoProblema` en `openapi
 > - JSON mal formado y cuerpo demasiado grande responden `400 validation-error`, sin `413` ni `type` propios.
 > - Un deadlock que persiste después de 3 reintentos responde `503 retryable`.
 > **Motivo:** decidir por el texto del mensaje rompe con cualquier cambio de versión o de idioma de PostgreSQL. Con textos fijos, ningún dato interno puede viajar por error dentro de `detail`. Mantener el catálogo en 17 `type` hace que cada cliente lo cubra completo con un mapa de textos.
+
+---
+
+## 8. Historial de movimientos
+
+### 8.1 Consulta
+
+`GET /cuentas/{cuentaId}/movimientos` corre en el caso de uso `listarMovimientos`, sin transacción de escritura:
+
+1. Verifica que la cuenta sea del usuario. Si no, `404` (R-5.10).
+2. Valida los parámetros con Zod: `limite` de 1 a 100 (20 por defecto), `desde <= hasta`, `tipo` dentro de los cinco tipos de usuario (R-5.2, R-5.5, R-5.6).
+3. Decodifica el cursor, si viene (§8.3).
+4. Ejecuta la consulta con `LIMIT limite + 1`. La fila de más indica si hay página siguiente (D-11).
+
+```sql
+SELECT a.id, a.tipo_movimiento, a.monto_centavos, a.creado_en,
+       t.id AS transferencia_id, t.concepto, t.referencia,
+       b.alias   AS beneficiario_alias,
+       co.nombre AS contraparte_nombre,
+       co.clabe  AS contraparte_clabe
+  FROM asiento a
+  JOIN transferencia t ON t.id = a.transferencia_id
+  JOIN cuenta co       ON co.id = CASE WHEN a.monto_centavos < 0
+                                       THEN t.cuenta_destino_id
+                                       ELSE t.cuenta_origen_id END
+  LEFT JOIN beneficiario b ON b.id = t.beneficiario_id AND a.monto_centavos < 0
+ WHERE a.cuenta_id = $1
+   -- fragmentos opcionales, solo si el filtro viene (DD-37):
+   AND a.tipo_movimiento = $2                                -- tipo
+   AND a.creado_en >= $3 AND a.creado_en < $4                -- desde / hasta (§8.4)
+   AND (a.creado_en, a.id) < ($5::timestamptz, $6::bigint)   -- cursor (§8.3)
+ ORDER BY a.creado_en DESC, a.id DESC
+ LIMIT $7;
+```
+
+- **Sin rechazadas ni pendientes** (R-5.8): no tienen asientos (DD-17), así que no hace falta filtrarlas.
+- **Los `JOIN` son por llave primaria** y solo se hacen para las `limite + 1` filas que devuelve el índice.
+- **Depósitos** (R-5.9): el movimiento `DEPOSITO` se muestra como "Depósito". El cargo `FONDEO_SALIDA` (DD-13) vive en Fondeo, que nunca es consultable.
+
+**Contraparte** (esquema `Contraparte` de `openapi.yaml`). La calcula una función pura del dominio a partir de la fila:
+
+| Tipo de movimiento | `etiqueta` | `clabeTerminacion` |
+|---|---|---|
+| `DEPOSITO` | `"Depósito"` | `null` |
+| `ENVIO` | Alias del beneficiario | Últimos 4 dígitos de la CLABE destino |
+| `RECEPCION` | `"Transferencia recibida"` | Últimos 4 dígitos de la CLABE origen |
+| `TRASPASO_SALIDA` | Nombre de la cuenta destino (`"Ahorro"`) | Últimos 4 dígitos de la CLABE destino |
+| `TRASPASO_ENTRADA` | Nombre de la cuenta origen | Últimos 4 dígitos de la CLABE origen |
+
+Una recepción no muestra quién envía. El modelo no guarda el nombre del usuario, y el alias que le puso el emisor es un dato privado del emisor.
+
+### 8.2 Índices
+
+Definidos en D-11 y creados en la migración 3 (§3.5):
+
+| Índice | Sirve a |
+|---|---|
+| `ix_asiento_cuenta_creado (cuenta_id, creado_en DESC, id DESC)` | Historial sin filtro de tipo, con o sin rango de fechas, y estado de cuenta (§9) |
+| `ix_asiento_cuenta_tipo_creado (cuenta_id, tipo_movimiento, creado_en DESC, id DESC)` | Historial filtrado por tipo |
+| `uq_asiento_transferencia_cuenta (transferencia_id, cuenta_id)` | Verificación diferida de la transferencia (§3.3) |
+
+**Plan esperado:** un `Index Scan` sobre el índice que corresponde, con `cuenta_id` (y `tipo_movimiento`) como igualdad, y el rango de fechas y el cursor como condición del mismo índice. Sin `Sort`, y leyendo unas `limite + 1` filas. Esto es lo que verifica §8.5.
+
+**Comparación de tuplas.** PostgreSQL puede usar `(creado_en, id) < ($5, $6)` como condición de un índice B-tree, porque las dos columnas son consecutivas en el índice y tienen la misma dirección. Si el `EXPLAIN` de §8.5 la mostrara como `Filter` en lugar de `Index Cond`, se reemplaza por la forma equivalente `a.creado_en <= $5 AND (a.creado_en < $5 OR a.id < $6)`, cuya primera parte siempre es un rango del índice.
+
+### 8.3 Cursor
+
+```text
+cursor      = base64url(JSON.stringify({ v: 1, c: "<creado_en tal como sale de PostgreSQL>", i: "<id>", f: "<filtrosHash>" }))
+filtrosHash = primeros 16 caracteres hex de SHA-256(JSON.stringify(["v1", cuentaId, tipo ?? null, desde ?? null, hasta ?? null]))
+```
+
+- `c` es el texto de `timestamptz` con microsegundos que devuelve el parser de §2.3. Viaja a la consulta como texto con `::timestamptz`, sin pasar por `Date` (D-11, DD-07).
+- `i` es el `id` del asiento, como texto.
+- `filtrosHash` incluye el `cuentaId`. Un cursor de otra cuenta, de otro tipo o de otro rango de fechas responde `400 invalid-cursor` (R-5.7). `limite` no entra en el hash: el tamaño de página puede cambiar a mitad del recorrido.
+- **Decodificación estricta:** base64url válido, JSON válido, esquema Zod (`v = 1`, `c` con formato de `timestamptz`, `i` solo dígitos, `f` de 16 caracteres hex) y `f` igual al hash de la petición. Cualquier fallo responde `400 invalid-cursor`.
+- **No está firmado.** Un cursor fabricado solo permite paginar desde otro punto de **una cuenta propia**: la propiedad de la cuenta se verifica en cada petición, independientemente del cursor.
+
+**Movimientos que entran entre una página y otra** (R-5.4). Un movimiento nuevo tiene que quedar **antes** del cursor, nunca en la parte ya recorrida. Eso exige que el `creado_en` de cada asiento nuevo de una cuenta sea mayor que el de todos los asientos ya confirmados en esa cuenta. Con `now()` no se cumple: `now()` es el inicio de la transacción, así que una transacción que empezó antes y confirmó después puede insertar un asiento con un instante anterior al cursor, y el recorrido lo saltaría.
+
+> **DD-36 · Aprobada · El instante de aplicación se lee con `clock_timestamp()` después de bloquear las cuentas (precisa DD-07 y D-11)**
+> **Contexto:** DD-07 leía el instante una vez por transacción con `SELECT now()`. Con dos transferencias concurrentes hacia la misma cuenta, la que empezó antes puede confirmar después con un `creado_en` menor que el del último asiento que un cliente ya vio, y la paginación por cursor lo saltaría. R-5.4 se rompería.
+> **Opciones:** (1) conservar `now()` y documentar el caso como limitación; (2) leer la hora real después de bloquear las cuentas.
+> **Decisión:**
+> - `RelojBaseDatos.ahora(tx)` ejecuta `SELECT clock_timestamp()`.
+> - Al crear y al confirmar, se lee **después** de bloquear las cuentas (§6.1, paso 3.4; §6.5). Ese único valor se usa para `aplicada_en`, para el `creado_en` de los dos asientos y para la ventana del límite diario.
+> - Donde no hay cuentas que bloquear (vencimiento del código, expiración perezosa), se lee después del último bloqueo del flujo.
+> **Motivo:** toda transacción que inserta asientos en una cuenta tiene el bloqueo de esa cuenta. Quien toma el bloqueo lee la hora cuando el titular anterior ya confirmó, así que su instante es mayor que el de cualquier asiento visible en esa cuenta. Los dos asientos de una transferencia siguen compartiendo instante, porque salen de una sola lectura (D-11, DD-17). `RelojFijo` sigue sirviendo para las pruebas de medianoche.
+> **Prueba:** se lanzan transferencias concurrentes hacia una cuenta mientras otra tarea recorre su historial página por página. Las páginas, juntas, no deben tener huecos ni repetidos respecto a los asientos que ya existían al empezar el recorrido.
+
+**Mismo instante en el borde de una página** (R-5.4). El caso es una cuenta con varios movimientos con el mismo `creado_en`. `requirements.md` lo ilustraba antes con "los dos asientos de un traspaso", pero esos asientos caen en cuentas distintas y nunca aparecen juntos en el historial de una cuenta; el ejemplo se corrigió para que requisito y diseño coincidan. La prueba lo fuerza con `RelojFijo`: crea 25 movimientos con el mismo instante en una cuenta, la recorre con `limite = 10` y verifica que cada asiento aparece exactamente una vez, gracias al desempate por `id`.
+
+### 8.4 Filtros de fecha
+
+`desde` y `hasta` son días de calendario en `America/Mexico_City` (D-15). Se convierten en SQL, con la zona con nombre:
+
+```sql
+a.creado_en >= ($3::date)::timestamp AT TIME ZONE 'America/Mexico_City'
+AND a.creado_en < (($4::date) + 1)::timestamp AT TIME ZONE 'America/Mexico_City'
+```
+
+- El rango es `[desde 00:00, hasta + 1 día 00:00)` en hora local (R-5.5).
+- Con solo `desde` no hay cota superior; con solo `hasta`, no hay cota inferior.
+- `desde > hasta` responde `400 validation-error` (R-5.5).
+- La zona vive en una sola constante de `shared`, `ZONA_HORARIA = 'America/Mexico_City'`, y se pasa a la consulta como parámetro.
+
+> **DD-37 · Aprobada · Consulta del historial con fragmentos fijos y contraparte sin datos del titular**
+> **Contexto:** D-11 fija el orden, los índices y el cursor. Falta cómo se arma la consulta con filtros opcionales y qué se muestra de la otra parte.
+> **Opciones de construcción:** (1) una sola consulta con `($x IS NULL OR columna = $x)` por filtro; (2) fragmentos fijos que se agregan solo si el filtro viene.
+> **Decisión:**
+> - La opción 2. El repositorio agrega solo los fragmentos de los filtros presentes.
+> - **El texto SQL solo se forma concatenando fragmentos constantes** definidos en el propio repositorio. Ningún valor de la petición entra al texto, ni siquiera el tipo o la dirección del orden: todos van como parámetros `$n`, numerados según los fragmentos incluidos. Una prueba unitaria genera la consulta para cada combinación de filtros con valores marcadores y verifica que ninguno aparece en el texto SQL y que todos aparecen en el arreglo de parámetros.
+> - La contraparte sigue la tabla de §8.1 y la calcula el dominio.
+> - El estado de cuenta (§9) reusa el mismo repositorio, con rango de fechas y sin `LIMIT`.
+> **Motivo:** con `$x IS NULL OR …`, PostgreSQL puede elegir un plan genérico que no use el índice por tipo. Con fragmentos fijos, cada combinación de filtros tiene un plan estable con su índice, y eso es lo que mide §8.5. La contraparte no revela datos del titular (R-3.6) ni el alias privado del emisor.
+
+### 8.5 `EXPLAIN ANALYZE` — ⏳ PENDIENTE
+
+> **⏳ Pendiente hasta tener el seed de §3.7** (120,000 asientos o más, con una cuenta caliente de 30,000 o más). Esta subsección se completa en la tarea de `tasks.md` que implementa el historial, en el mismo commit que su prueba (RNF-14).
+
+**Cómo se generará.** `npm run db:explicar` corre `api/src/scripts/explicar-historial.ts`: ejecuta `ANALYZE` y después `EXPLAIN (ANALYZE, BUFFERS)` sobre la cuenta caliente para cada variante. Su salida se pega aquí.
+
+| # | Variante | Índice esperado | Resultado |
+|---|---|---|---|
+| 1 | Primera página, sin filtros, `limite = 20` | `ix_asiento_cuenta_creado` | ⏳ |
+| 2 | Página profunda, con un cursor a unos 25,000 movimientos del inicio | `ix_asiento_cuenta_creado`, con el cursor como `Index Cond` | ⏳ |
+| 3 | Filtro `tipo = ENVIO`, primera página | `ix_asiento_cuenta_tipo_creado` | ⏳ |
+| 4 | Rango de un mes con `desde` y `hasta` | `ix_asiento_cuenta_creado`, con el rango como `Index Cond` | ⏳ |
+| 5 | Referencia: la variante 1 con `SET enable_indexscan = off` | `Seq Scan` o `Bitmap Heap Scan`, más `Sort` | ⏳ |
+
+**Criterios de aceptación** para las variantes 1 a 4:
+
+- El nodo que lee `asiento` es un `Index Scan` sobre el índice esperado; no `Seq Scan` ni `Bitmap Heap Scan`.
+- No hay nodo `Sort`.
+- Las filas leídas de `asiento` son del orden de `limite + 1`, **también en la variante 2**. Eso demuestra que el costo no crece con la profundidad de la página (RNF-13).
+- Se registra el `Execution Time` de cada una; la variante 5 sirve de comparación.
+
+Si alguna variante no cumple, se aplica la alternativa de §8.2 o se ajusta el índice, y aquí se documentan el antes y el después.
+
+---
+
+## 9. Estado de cuenta CSV
+
+`GET /cuentas/{cuentaId}/estado-cuenta?mes=AAAA-MM` (D-08):
+
+1. La cuenta debe ser del usuario; si no, `404` (R-B1.4).
+2. `mes` debe tener la forma `AAAA-MM` con un mes de 01 a 12; si no, `400 validation-error` (R-B1.5).
+3. Ventana: `[AAAA-MM-01 00:00, primer día del mes siguiente 00:00)` en `America/Mexico_City`, con la misma conversión de §8.4 (D-15).
+4. **Saldo inicial:** `SUM(monto_centavos)::bigint` de los asientos de la cuenta anteriores al inicio de la ventana, como rango del mismo índice.
+5. Movimientos de la ventana en orden cronológico ascendente, con el repositorio de §8.1 (DD-37). El saldo acumulado por fila se calcula en la API sumando enteros.
+
+**Formato**
+
+| Aspecto | Valor |
+|---|---|
+| Codificación | UTF-8 con BOM (`EF BB BF`) (R-B1.1) |
+| Separador y fin de línea | Coma y `CRLF` (RFC 4180) |
+| Comillas | Todo campo de texto va entre comillas dobles; una comilla interna se duplica |
+| Columnas | `fecha,tipo,concepto,referencia,contraparte,monto,saldo` |
+| `fecha` | Hora local `AAAA-MM-DD HH:MM:SS` en `America/Mexico_City` |
+| `tipo` | `Depósito`, `Envío`, `Recepción`, `Traspaso enviado`, `Traspaso recibido` |
+| `contraparte` | La `etiqueta` de §8.1, más los últimos 4 dígitos de la CLABE si existen |
+| `monto`, `saldo` | Pesos con dos decimales, con signo y sin separador de miles: `-0.05`, `1234.56`, `0.00`. Los produce `centavosATextoDecimal` de `shared`, que separa los dos últimos dígitos del texto del entero, sin aritmética de punto flotante (R-B1.2, D-18) |
+| Nombre del archivo | `Content-Disposition: attachment; filename="estado-cuenta-<últimos 4 de la CLABE>-AAAA-MM.csv"` |
+| Caché | `Cache-Control: no-store` |
+
+**Inyección de fórmulas** (R-B1.3). Si un campo de **texto** (`concepto`, `contraparte`) empieza con `=`, `+`, `-`, `@`, tabulador o retorno de carro, se le antepone un apóstrofo (`'`). `monto`, `saldo`, `fecha` y `referencia` (solo dígitos) nunca se alteran. Los caracteres de control ya no pueden aparecer dentro de los textos (DD-16); el apóstrofo cubre los cuatro caracteres visibles.
+
+**Mes sin movimientos** (cierra el pendiente §12.7 de `requirements.md`). Responde `200` con el BOM y la fila de encabezados, sin filas de datos. Lo mismo vale para un mes futuro o anterior a la creación de la cuenta: son meses válidos sin movimientos.
+
+**Pruebas:**
+
+- Montos: `-5` → `-0.05`, `123456` → `1234.56`, `0` → `0.00`.
+- Un concepto `=SUMA(A1)` sale como `'=SUMA(A1)`, y un monto negativo no recibe apóstrofo.
+- Mes vacío: solo BOM y encabezados.
+- Cambio de mes en hora local: un movimiento a las 23:30 del último día del mes, que en UTC ya cae en el mes siguiente, aparece en el mes local correcto.
+- El saldo de la última fila es igual al saldo de la cuenta cuando el mes es el actual.
+
+> **DD-38 · Aprobada · Formato del CSV con saldo acumulado, mes vacío y respuestas sin caché (cierra §12.7)**
+> **Contexto:** D-08 fija la codificación, los montos y la inyección de fórmulas, pero no las columnas ni qué responde un mes sin movimientos.
+> **Decisión:**
+> - Las columnas de la tabla, con un saldo acumulado por fila que parte del saldo inicial del mes.
+> - Un mes vacío, futuro o anterior a la cuenta responde `200` con solo los encabezados.
+> - Todos los campos de texto van entre comillas.
+> - `Cache-Control: no-store` en el CSV y en toda respuesta autenticada (middleware `autenticar`, §2.2).
+> **Motivo:** un estado de cuenta sin saldo no permite conciliar, y el saldo inicial cuesta una sola suma por rango del índice. Un mes válido sin datos no es un error, y responder `404` haría indistinguibles "cuenta ajena" y "mes vacío". `no-store` impide que un proxy o el navegador guarden saldos y movimientos.
+
+---
+
+## 10. Observabilidad y auditoría
+
+### 10.1 Logs estructurados
+
+`pino` escribe una línea JSON por evento en `stdout`. En local se puede leer con `pino-pretty`; en producción, el destino está en `docs/aws-deploy.md`.
+
+**Campos de cada línea de una petición:** `level`, `time` (ISO), `reqId` (DD-09), `usuarioId` (después de `autenticar`) y `msg`. La línea de cierre de `pino-http` agrega `req.method`, `req.url`, `res.statusCode` y `responseTime`.
+
+**Contexto de la petición.** Un `AsyncLocalStorage` guarda `{ reqId, usuarioId }` mientras dura la petición. El logger de los casos de uso y `auditoria.registrarEvento` lo leen de ahí, sin pasarlo por parámetro: cada log y cada evento de auditoría llevan el request ID (RNF-12).
+
+**Niveles**
+
+| Nivel | Cuándo |
+|---|---|
+| `info` | Cierre de cada petición; arranque y parada |
+| `warn` | Deadlock reintentado (D-12); `23505` en la llave de idempotencia (§6.2); reúso de refresh (§5.3); `429` |
+| `error` | Todo `500`, con la causa y su traza (§7.4); configuración inválida al arrancar (§2.4) |
+
+**Qué nunca se registra y qué se enmascara** (RNF-12; cierra el pendiente §12.6 de `requirements.md`):
+
+| Dato | Tratamiento |
+|---|---|
+| Cuerpos de petición y de respuesta | **No se registran nunca.** Los serializadores de `pino-http` solo emiten método, URL y código |
+| Headers `authorization` y `cookie` de la petición y `set-cookie` de la respuesta | Ocultos con `redact` (rutas `req.headers.authorization`, `req.headers.cookie` y `res.headers["set-cookie"]`), aunque los serializadores no emitan headers: si alguien los agrega, siguen censurados |
+| Propiedades `contrasena`, `hash_contrasena`, `accessToken`, `refreshToken`, `refresh_hash`, `codigo`, `codigoSimulado`, `codigo_hmac`, en cualquier objeto registrado | Censuradas con `redact` (rutas `*.campo` y `*.*.campo`) |
+| Correo | Enmascarado: `a***@dominio.mx` (primera letra y dominio) |
+| CLABE | Enmascarada: `**************1234` (últimos 4 dígitos) |
+| `Idempotency-Key`, ids y montos | Tal cual: no son secretos y hacen falta para investigar |
+
+El enmascarado lo hacen dos funciones de `plataforma/logging`, `enmascararCorreo` y `enmascararClabe`, que comparten el logger y la auditoría.
+
+**Prueba de fugas.** Una prueba de integración captura toda la salida del logger mientras ejecuta registro, login, refresh, alta de beneficiario, transferencia con código, confirmación fallida y confirmación correcta. Después busca en el texto crudo la contraseña, **cada access token y cada refresh token emitidos** (incluido el que viaja en la cookie), el código, la CLABE completa y el correo completo. Ninguno debe aparecer. Las peticiones de la prueba mandan `Authorization`, `Cookie` y reciben `Set-Cookie`, de modo que la prueba ejercita las tres rutas de `redact`.
+
+> **DD-39 · Aprobada · Cuerpos nunca registrados, enmascarado de correo y CLABE, y contexto por `AsyncLocalStorage` (cierra §12.6)**
+> **Contexto:** RNF-12 lista lo que nunca va a los logs y pide enmascarar "los demás datos sensibles"; `requirements.md` §12.6 deja abierta la CLABE.
+> **Opciones:** (1) registrar los cuerpos y censurar campo por campo; (2) no registrar cuerpos y censurar como segunda barrera.
+> **Decisión:** la opción 2, con la tabla anterior. El logger oculta siempre los headers `authorization`, `cookie` y `set-cookie`. El request ID y el usuario viajan en `AsyncLocalStorage`. Una prueba busca fugas en la salida cruda del logger y verifica que ningún token, ni access ni refresh, aparezca en ella.
+> **Motivo:** censurar campo por campo deja pasar el siguiente campo sensible que alguien agregue. No registrar cuerpos cierra esa clase de fugas por construcción, y `redact` queda como segunda barrera. La CLABE completa junto con el correo identifica a una persona y su cuenta; los últimos 4 dígitos bastan para investigar.
+
+### 10.2 Auditoría
+
+Tabla `evento_auditoria` (§3.2), de solo inserción (RNF-11, DD-18).
+
+| `tipo` | Cuándo | `usuario_id` | `datos` | Requisito |
+|---|---|---|---|---|
+| `usuario-registrado` | Registro confirmado | El nuevo usuario | `{ cuentas: [ids] }` | — |
+| `sesion-iniciada` | Login correcto | El usuario | `{ familiaId, cliente }` | — |
+| `login-fallido` | Credenciales incorrectas | `null` | `{ correo: enmascarado }` | — |
+| `sesion-cerrada` | Logout que revocó una familia | El usuario | `{ familiaId }` | — |
+| `refresh-reuse-detected` | Reúso de un refresh | El usuario | `{ familiaId, sesionesRevocadas }` | R-1.9, RNF-11 |
+| `beneficiario-creado` | Alta de beneficiario | El usuario | `{ beneficiarioId, clabe: enmascarada }` | — |
+| `fondeo-aplicado` | Cada fondeo: bienvenida y fase 1 del seed | El que recibe | `{ transferenciaId, cuentaDestinoId, montoCentavos }` | R-1.2, RNF-11 |
+| `transferencia-pendiente` | Se crea una pendiente | El emisor | `{ transferenciaId, montoCentavos, codigoExpiraEn }` | — |
+| `transferencia-aplicada` | Aplicada al crear o al confirmar | El emisor | `{ transferenciaId, tipo, montoCentavos, cuentaOrigenId, cuentaDestinoId }` | RNF-11 |
+| `transferencia-rechazada` | Rechazada por cualquier motivo | El emisor | `{ transferenciaId, motivo, montoCentavos }` | RNF-11 |
+| `codigo-incorrecto` | Cada intento fallido | El emisor | `{ transferenciaId, intentos }` | R-6.11, RNF-11 |
+
+- **El evento se inserta en la misma transacción que la operación que audita.** Si la inserción falla, la operación entera se revierte: no hay dinero movido sin su evento. La única excepción es `login-fallido`, que no tiene transacción de negocio y se inserta solo.
+- `request_id` sale del contexto de la petición (§10.1). En el seed vale `seed`.
+- `datos` usa las mismas funciones de enmascarado que los logs y nunca contiene secretos ni códigos.
+- La fase 2 del seed (volumen por SQL, DD-20) no genera eventos de auditoría: son datos sintéticos de medición, no operaciones.
+- La API no expone la auditoría. La retención en producción se define en `docs/aws-deploy.md`.
+- Las pruebas de RNF-23 verifican que cada flujo deja exactamente los eventos de esta tabla, y las de DD-18 que no se pueden modificar ni borrar.
+
+> **DD-40 · Aprobada · Catálogo de auditoría y auditoría dentro de la transacción del negocio**
+> **Contexto:** RNF-11 fija un mínimo (fondeo, transferencia aplicada o rechazada, intento fallido de código y reúso de refresh), y el interrogatorio dejó el catálogo para el diseño.
+> **Decisión:** el catálogo de la tabla, que agrega sesiones, login fallido, alta de beneficiario y pendientes. Cada evento se inserta en la transacción de su operación. El volumen sintético del seed no se audita.
+> **Motivo:** si la auditoría fuera una escritura aparte, un fallo entre las dos dejaría dinero movido sin registro. Los eventos agregados son los primeros que pediría una investigación de fraude: quién inició sesión, desde qué cliente y a quién dio de alta como beneficiario antes de transferir.
+
+### 10.3 Salud y métricas
+
+- `GET /api/health` ejecuta `SELECT 1` con un timeout corto: responde `200` si la base contesta y `503 retryable` si no.
+- Métricas, trazas distribuidas y alarmas quedan para `docs/aws-deploy.md` (CloudWatch, X-Ray u OpenTelemetry). En local bastan los logs JSON y el `EXPLAIN` de §8.5.
+
+---
+
+## 11. Rate limiting
+
+`express-rate-limit` responde `429 too-many-requests` en formato RFC 7807, con `Retry-After` y los headers estándar `RateLimit-*` (R-1.18, R-3.9, RNF-04). Esta sección cierra el pendiente §12.4 de `requirements.md`.
+
+| Ruta | Llave | Ventana | Máximo | Qué cuenta | Requisito |
+|---|---|---|---|---|---|
+| `POST /auth/login` | IP | 15 min | 20 | Todas las peticiones | R-1.18 |
+| `POST /auth/login` | Correo normalizado | 15 min | 5 | Solo los fallos (`skipSuccessfulRequests`) | R-1.18 |
+| `POST /auth/registro` | IP | 1 hora | 5 | Todas las peticiones | R-1.18, D-20 |
+| `POST /beneficiarios` | `usuarioId` | 1 hora | 10 | Todas las peticiones | R-3.9, D-19 |
+
+- **Login por correo:** frena la adivinación de contraseñas contra una cuenta aunque el atacante cambie de IP. Solo cuenta los fallos, para que el dueño no se bloquee al iniciar sesión varias veces. La llave sale del correo del cuerpo, normalizado como en el esquema; si el cuerpo no trae correo, la petición solo cuenta en el límite por IP.
+- **Registro por IP:** acota la enumeración de correos que permite el `409` (concesión de DD-23) y la fila que se forma sobre Fondeo (D-20).
+- **Beneficiarios por usuario:** el alta no puede usarse como oráculo de qué CLABE existe (D-19).
+- **Sin rate limit** en:
+  - refresh: cuesta un SHA-256 y exige un refresh válido;
+  - confirmar: los 3 intentos por código ya lo acotan (D-07);
+  - transferir: ya lo acotan el límite diario, el saldo y el bloqueo por usuario.
+
+  Un límite general por usuario va en "qué haría con más tiempo".
+- **IP real:** `app.set('trust proxy', TRUST_PROXY)` (§2.4). En local vale `0`. Express toma la IP del cliente de `X-Forwarded-For`, contando desde la derecha tantos saltos como proxies confiables haya.
+  - Con `0`, se ignora `X-Forwarded-For` y se usa la IP de la conexión.
+  - Con **el número exacto** de proxies propios (por ejemplo, `1` detrás de un solo ALB), se toma la entrada que agregó el último proxy confiable, y lo que el cliente haya escrito a la izquierda se ignora.
+  - **Nunca `true`:** confiaría en toda la cadena, y cualquiera podría falsificar su IP con un `X-Forwarded-For` inventado y así esquivar el rate limit.
+  - **Para `docs/aws-deploy.md`:** fijar `TRUST_PROXY` al número exacto de saltos de la arquitectura (CloudFront, ALB) y documentarlo junto al diagrama, porque un valor mayor que el real vuelve a abrir la falsificación.
+- **Almacén:** memoria del proceso. Las pruebas lo reinician entre casos.
+- **Pruebas:** superar cada límite de la tabla devuelve `429 too-many-requests` con `Retry-After`; un login correcto no consume el límite por correo; el límite de beneficiarios es por usuario, así que un segundo usuario no se ve afectado.
+
+> **DD-41 · Aprobada · Umbrales del rate limit y almacén en memoria (cierra §12.4)**
+> **Contexto:** RNF-04 pide rate limit en login, registro y alta de beneficiarios sin fijar umbrales; D-19 sugiere unos 10 por hora para beneficiarios.
+> **Opciones de almacén:** (1) memoria del proceso; (2) PostgreSQL; (3) Redis.
+> **Decisión:** los umbrales de la tabla, con almacén en memoria para esta entrega. En producción, con varias instancias, se usa Redis (ElastiCache) con el mismo esquema de llaves. `docs/aws-deploy.md` documenta las dos cosas: el almacén y el valor exacto de `TRUST_PROXY` detrás del balanceador, para obtener la IP real sin permitir falsificarla con `X-Forwarded-For`.
+> **Motivo:** en local corre un solo proceso, así que la memoria da el comportamiento exacto sin otra dependencia. PostgreSQL como almacén agregaría una escritura a cada intento de login, contra la misma base que mueve el dinero. Con varias instancias, el almacén en memoria multiplicaría el límite por el número de instancias, y por eso producción usa Redis.
+
+---
+
+## 12. Diagramas de secuencia
+
+### 12.1 Registro con fondeo de bienvenida
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant W as Web
+    participant A as API
+    participant D as PostgreSQL
+    U->>W: Correo y contraseña
+    W->>W: Valida con el esquema de shared
+    W->>A: POST /auth/registro
+    A->>A: Rate limit por IP, Zod y hash argon2id
+    A->>D: BEGIN e INSERT usuario
+    alt Correo ya registrado
+        D-->>A: 23505 en uq_usuario_correo
+        A->>D: ROLLBACK
+        A-->>W: 409 correo-ya-registrado
+    else Correo nuevo
+        A->>D: INSERT cuentas Principal y Ahorro con CLABE aleatoria
+        opt FONDEO_BIENVENIDA_CENTAVOS mayor que 0
+            A->>D: Bloquea Fondeo y Principal por id ascendente
+            A->>D: Lee el instante con clock_timestamp
+            A->>D: INSERT transferencia FONDEO APLICADA y 2 asientos
+            Note over D: El trigger mueve los saldos
+            A->>D: INSERT evento fondeo-aplicado
+        end
+        A->>D: INSERT evento usuario-registrado
+        A->>D: COMMIT y verificación diferida
+        A-->>W: 201 con id y correo
+        W->>A: POST /auth/login con cliente web
+    end
+```
+
+El usuario recién insertado queda bloqueado por su propio `INSERT`, así que el fondeo respeta el orden de D-12: primero el usuario, después las cuentas (D-20).
+
+### 12.2 Login, rotación y reúso del refresh
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as Web
+    participant X as Atacante
+    participant A as API
+    participant D as PostgreSQL
+    W->>A: POST /auth/login con cliente web
+    A->>D: Busca el usuario por correo
+    A->>A: Verifica argon2id, con hash ficticio si no existe
+    A->>D: INSERT sesion R1 en la familia F, vence en 7 días
+    A-->>W: 200 con access y Set-Cookie R1
+    Note over W: El access vence a los 15 min
+    W->>A: POST /auth/refresh con cookie R1 y X-Requested-With
+    A->>D: SELECT sesion R1 FOR UPDATE
+    A->>D: Marca R1 como usada e inserta R2 en F con el mismo vencimiento
+    A-->>W: 200 con access y Set-Cookie R2
+    X->>A: POST /auth/refresh con R1 robado
+    A->>D: SELECT sesion R1 FOR UPDATE
+    Note over A: R1 ya estaba usada, es reúso
+    A->>D: Revoca todas las sesiones de F
+    A->>D: INSERT evento refresh-reuse-detected y COMMIT
+    A-->>X: 401 unauthorized
+    W->>A: POST /auth/refresh con cookie R2
+    A->>D: SELECT sesion R2 FOR UPDATE
+    A-->>W: 401 porque la familia está revocada
+    W->>W: Muestra el login
+```
+
+### 12.3 Transferencia sin código
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant W as Web
+    participant A as API
+    participant D as PostgreSQL
+    U->>W: Origen, destino, monto, concepto y referencia
+    W->>W: montoTextoACentavos y esquema de shared
+    U->>W: Continuar a la confirmación
+    W->>W: Congela los datos y genera la llave K
+    U->>W: Enviar
+    W->>W: Guarda el intento en fase creacion y deshabilita Enviar
+    W->>A: POST /transferencias con Idempotency-Key K
+    A->>D: Busca K para el usuario y no existe
+    A->>D: Resuelve origen y beneficiario y clasifica TERCERO
+    A->>D: BEGIN y bloquea al usuario
+    A->>D: Vuelve a buscar K y no existe
+    A->>D: Bloquea las dos cuentas por id ascendente
+    A->>D: Lee el instante con clock_timestamp
+    A->>D: Saldo suficiente y consumido del día dentro del límite
+    A->>D: INSERT transferencia APLICADA y 2 asientos
+    A->>D: INSERT evento transferencia-aplicada
+    A->>D: COMMIT y verificación diferida
+    A-->>W: 201 con comprobante
+    W->>W: Borra el intento
+    W->>U: Comprobante
+```
+
+Con saldo insuficiente falla la validación de saldo (paso 14). La API inserta la transferencia `RECHAZADA` con su evento y responde `422 saldo-insuficiente` con `transferenciaId`. La web muestra el motivo en lenguaje claro y no muestra comprobante (R-4.12).
+
+### 12.4 Transferencia con código y confirmación
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant W as Web
+    participant A as API
+    participant D as PostgreSQL
+    participant O as ProveedorOtp
+    W->>A: POST /transferencias, monto mayor que el umbral, llave K
+    A->>D: Bloquea usuario y cuentas y lee el instante
+    A->>D: Saldo y límite suficientes, sin mover dinero
+    A->>D: INSERT transferencia PENDIENTE_CONFIRMACION
+    A->>D: INSERT código con HMAC que vence en 5 min
+    A->>D: INSERT evento transferencia-pendiente y COMMIT
+    A->>O: Entrega el código
+    O-->>A: codigoSimulado, solo en modo simulado
+    A-->>W: 202 con transferenciaId y codigoExpiraEn
+    W->>W: Pasa el intento a fase confirmacion
+    U->>W: Código incorrecto
+    W->>A: POST /transferencias/id/confirmar
+    A->>D: Bloquea usuario, luego transferencia y código
+    A->>A: timingSafeEqual de los HMAC, no coinciden
+    A->>D: Suma 1 a intentos, evento codigo-incorrecto y COMMIT
+    A-->>W: 422 codigo-incorrecto con intentosRestantes 2
+    U->>W: Código correcto
+    W->>A: POST /transferencias/id/confirmar
+    A->>D: Bloquea usuario, luego transferencia y código
+    A->>A: Los HMAC coinciden y el código sigue vigente
+    A->>D: Bloquea las cuentas y vuelve a leer el instante
+    A->>D: Revalida saldo y límite con la hora de confirmación
+    A->>D: UPDATE a APLICADA, INSERT 2 asientos y evento, COMMIT
+    A-->>W: 201 con comprobante
+    W->>W: Borra el intento
+```
+
+### 12.5 Dos peticiones simultáneas con la misma llave
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Cliente
+    participant A1 as API, petición 1
+    participant A2 as API, petición 2
+    participant D as PostgreSQL
+    par Doble envío
+        C->>A1: POST /transferencias con llave K
+    and
+        C->>A2: POST /transferencias con llave K
+    end
+    A1->>D: Busca K y no existe
+    A2->>D: Busca K y no existe
+    A1->>D: BEGIN y bloquea al usuario
+    A2->>D: BEGIN y pide el bloqueo del usuario
+    Note over A2,D: Espera, como máximo 5 s de lock_timeout
+    A1->>D: Revisa K, bloquea cuentas, aplica y COMMIT
+    A1-->>C: 201 con comprobante
+    D-->>A2: Obtiene el bloqueo
+    A2->>D: Vuelve a buscar K y encuentra la fila de la petición 1
+    A2->>A2: Compara el hash y es el mismo
+    A2->>D: COMMIT sin escribir
+    A2-->>C: 201 con el mismo comprobante
+```
+
+Si los hashes difieren, la petición 2 responde `422 idempotency-key-reused`. Si, pese al bloqueo, el `INSERT` chocara con `uq_transferencia_usuario_llave`, la red de seguridad de §6.2 lee la fila ganadora en otra transacción.
+
+### 12.6 Recarga de la web a mitad del envío
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant W as Web
+    participant S as sessionStorage
+    participant A as API
+    U->>W: Enviar
+    W->>S: Guarda el intento con llave K, cuerpo y fase creacion
+    W->>A: POST /transferencias con llave K
+    U->>W: Recarga la página antes de la respuesta
+    Note over A: La API confirma la transferencia y la respuesta se pierde
+    W->>A: POST /auth/refresh con la cookie
+    A-->>W: 200 con access nuevo
+    W->>S: Lee el intento guardado
+    W->>U: Verificando operación anterior
+    W->>A: POST /transferencias con la misma llave K y el mismo cuerpo
+    A-->>W: 201 con la respuesta original reconstruida
+    W->>S: Borra el intento
+    W->>U: Comprobante
+```
+
+Variantes (§6.2):
+
+- Si el reenvío recibe `202`, la web consulta `GET /transferencias/{id}` y muestra el estado real antes de pedir el código.
+- Si el intento estaba en fase `confirmacion`, la web reenvía la confirmación con el código guardado, nunca la creación.
+- En modo simulado, `codigoSimulado` se toma del intento guardado (DD-25).
+
+### 12.7 Red perdida en la app móvil
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant M as App móvil
+    participant S as SecureStore
+    participant A as API
+    U->>M: Confirma la transferencia a un beneficiario
+    M->>S: Guarda el intento con llave K, cuerpo, usuario y fase creacion
+    M->>A: POST /transferencias con llave K
+    Note over A: Aplica y confirma, luego espera DEMO_LATENCIA_MS
+    Note over M: Modo avión, la respuesta se pierde
+    M->>U: Verificando estado de tu transferencia
+    M->>A: Reintento a 1 s con la misma llave
+    Note over M: Sin red, falla
+    M->>A: Reintento a 2 s con la misma llave
+    Note over M: Sin red, falla
+    Note over M: NetInfo detecta que volvió la conexión
+    M->>A: Reintento inmediato con la misma llave
+    A-->>M: 201 con la respuesta original reconstruida
+    M->>S: Borra el intento
+    M->>U: Comprobante
+```
+
+Variantes:
+
+- Si se agotan los reintentos (1, 2, 4, 8 y 16 s), la app muestra "Estado desconocido" con un solo botón, "Verificar de nuevo", que reenvía con la misma llave (R-4.30).
+- Si el access vence durante los reintentos, se refresca con la promesa única y se sigue con la misma llave (R-4.29).
+- Si la respuesta es `202`, la app consulta `GET /transferencias/{id}` y muestra el estado real antes de pedir el código (DD-32).
+- Si el intento estaba en fase `confirmacion`, se reintenta `POST /transferencias/{id}/confirmar` con el mismo código, nunca la creación (§6.2).
+- Al reabrir la app con un intento guardado del mismo usuario, se resuelve antes de mostrar el saldo; si es de otro usuario, no se envía (R-4.31).
 
 ---
