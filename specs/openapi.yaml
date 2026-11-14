@@ -1,0 +1,1016 @@
+openapi: 3.1.0
+info:
+  title: Billetera digital MXN
+  version: 0.1.0
+  summary: API de la billetera digital en pesos mexicanos.
+  description: |
+    Contrato de la API. Diseño y justificación en `specs/design.md` §4.
+
+    Convenciones (design.md §4.1):
+    - JSON en camelCase. Todos los montos son **centavos enteros** (`*Centavos`), nunca decimales.
+    - Marcas de tiempo en ISO 8601, UTC, con 6 decimales (`2026-11-14T16:05:09.123456Z`).
+    - Fechas de calendario (`desde`, `hasta`, `dia`) en `AAAA-MM-DD`, interpretadas en `America/Mexico_City`.
+    - Errores en RFC 7807 (`application/problem+json`). Catálogo de `type` en design.md §7.
+    - Recursos ajenos o inexistentes responden `404 not-found`, idéntico en ambos casos (D-10).
+    - Cada respuesta lleva el header `X-Request-Id`.
+  license:
+    name: Privada (prueba técnica)
+servers:
+  - url: http://localhost:3000/api
+    description: API local
+  - url: http://localhost:5173/api
+    description: API local a través del proxy de Vite (mismo origen que la web)
+
+tags:
+  - name: auth
+    description: Registro, inicio de sesión y rotación de tokens (HU-1)
+  - name: cuentas
+    description: Cuentas y saldo (HU-2), historial (HU-5) y estado de cuenta (HU-B1)
+  - name: beneficiarios
+    description: Alta y consulta de beneficiarios (HU-3)
+  - name: transferencias
+    description: Envío, confirmación con código y consulta (HU-4, HU-6)
+  - name: limites
+    description: Límite diario (HU-6)
+  - name: sistema
+    description: Salud del servicio
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [sistema]
+      summary: Salud del servicio y de la conexión a la base
+      security: []
+      operationId: salud
+      responses:
+        '200':
+          description: La API responde y la base de datos acepta consultas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [estado]
+                properties:
+                  estado: { const: ok }
+        '503':
+          $ref: '#/components/responses/Reintentable'
+
+  # ---------------------------------------------------------------- auth
+  /auth/registro:
+    post:
+      tags: [auth]
+      summary: Registra un usuario con sus cuentas Principal y Ahorro
+      description: |
+        Crea en una sola transacción el usuario, sus cuentas `Principal` y `Ahorro` y, si
+        `FONDEO_BIENVENIDA_CENTAVOS > 0`, el depósito de bienvenida (R-1.1 a R-1.3).
+        No abre sesión: el cliente llama después a `/auth/login` (DD-24).
+      operationId: registrar
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolicitudRegistro' }
+      responses:
+        '201':
+          description: Usuario registrado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsuarioRegistrado' }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '409':
+          description: El correo ya está registrado (R-1.4).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problema' }
+              example:
+                type: correo-ya-registrado
+                title: El correo ya está registrado
+                status: 409
+                detail: Inicia sesión o usa otro correo.
+        '429': { $ref: '#/components/responses/DemasiadasPeticiones' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Inicia sesión y abre una familia de sesión nueva
+      description: |
+        Emite un access token de 15 minutos y un refresh token de 7 días (R-1.6).
+        - `cliente: web`: el refresh va **solo** en la cookie `billetera_refresh`
+          (`HttpOnly; Secure; SameSite=Strict; Path=/api/auth`) y nunca en el cuerpo (R-1.13).
+        - `cliente: movil`: el refresh va en el cuerpo (`refreshToken`), sin cookie.
+        Credenciales incorrectas responden el mismo `401` exista o no el correo (R-1.7).
+      operationId: iniciarSesion
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolicitudLogin' }
+      responses:
+        '200':
+          description: Sesión iniciada.
+          headers:
+            Set-Cookie:
+              description: Solo con `cliente = web`. Cookie `billetera_refresh`.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tokens' }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '429': { $ref: '#/components/responses/DemasiadasPeticiones' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rota el refresh token y emite un access token nuevo
+      description: |
+        Acepta el refresh **por cookie** (web) o **por cuerpo** (móvil), nunca los dos (DD-24).
+        - Por cookie: exige el header `X-Requested-With: fetch` (R-1.16). La respuesta trae el
+          refresh nuevo solo en `Set-Cookie`.
+        - Por cuerpo: la respuesta trae el refresh nuevo en `refreshToken`.
+
+        Un refresh ya usado revoca toda su familia y responde `401` (R-1.9). Expirado, revocado o
+        inexistente: `401` (R-1.10). El `401` es idéntico en todos los casos.
+      operationId: refrescar
+      security:
+        - {}
+        - cookieRefresh: []
+      parameters:
+        - name: X-Requested-With
+          in: header
+          required: false
+          description: Obligatorio cuando el refresh viaja en la cookie.
+          schema: { const: fetch }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolicitudRefresh' }
+      responses:
+        '200':
+          description: Tokens rotados.
+          headers:
+            Set-Cookie:
+              description: Solo si el refresh llegó por cookie.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tokens' }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Cierra la sesión y revoca su familia
+      description: |
+        Identifica la familia por el refresh, por cookie o por cuerpo, igual que `/auth/refresh`.
+        Responde `204` aunque el refresh ya no sea válido, para que el cliente siempre pueda
+        limpiar su estado (R-1.12). Con cookie, la respuesta la borra (`Max-Age=0`).
+      operationId: cerrarSesion
+      security:
+        - {}
+        - cookieRefresh: []
+      parameters:
+        - name: X-Requested-With
+          in: header
+          required: false
+          description: Obligatorio cuando el refresh viaja en la cookie.
+          schema: { const: fetch }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolicitudRefresh' }
+      responses:
+        '204':
+          description: Sesión cerrada.
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  # ---------------------------------------------------------------- cuentas
+  /cuentas:
+    get:
+      tags: [cuentas]
+      summary: Lista las cuentas del usuario con su saldo
+      description: Nunca incluye la cuenta Fondeo (R-2.3).
+      operationId: listarCuentas
+      responses:
+        '200':
+          description: Cuentas del usuario.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Cuenta' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /cuentas/{cuentaId}:
+    get:
+      tags: [cuentas]
+      summary: Consulta una cuenta propia
+      operationId: obtenerCuenta
+      parameters:
+        - $ref: '#/components/parameters/CuentaId'
+      responses:
+        '200':
+          description: La cuenta.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cuenta' }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /cuentas/{cuentaId}/movimientos:
+    get:
+      tags: [cuentas]
+      summary: Historial de movimientos con filtros y paginación por cursor
+      description: |
+        Del más reciente al más antiguo (R-5.1). Página de 20 por defecto, 100 como máximo (R-5.2).
+        `siguienteCursor` es `null` en la última página (R-5.3). El cursor queda ligado a los
+        filtros con los que se generó: usarlo con otros responde `400 invalid-cursor` (R-5.7).
+        Las transferencias rechazadas y pendientes no aparecen (R-5.8).
+      operationId: listarMovimientos
+      parameters:
+        - $ref: '#/components/parameters/CuentaId'
+        - name: limite
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: cursor
+          in: query
+          description: Valor opaco de `siguienteCursor` de la página anterior.
+          schema: { type: string, maxLength: 512 }
+        - name: desde
+          in: query
+          description: Primer día incluido, en `America/Mexico_City` (R-5.5).
+          schema: { type: string, format: date }
+        - name: hasta
+          in: query
+          description: Último día incluido, en `America/Mexico_City`. No puede ser anterior a `desde`.
+          schema: { type: string, format: date }
+        - name: tipo
+          in: query
+          schema: { $ref: '#/components/schemas/TipoMovimiento' }
+      responses:
+        '200':
+          description: Una página de movimientos.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaMovimientos' }
+        '400':
+          description: Parámetros inválidos (`validation-error`) o cursor inválido (`invalid-cursor`).
+          content:
+            application/problem+json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ProblemaValidacion'
+                  - $ref: '#/components/schemas/Problema'
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /cuentas/{cuentaId}/estado-cuenta:
+    get:
+      tags: [cuentas]
+      summary: Estado de cuenta mensual en CSV
+      description: |
+        CSV en UTF-8 con BOM con los movimientos del mes en `America/Mexico_City` (R-B1.1).
+        Montos en pesos con dos decimales derivados de los centavos (R-B1.2). Formato en design.md §9.
+      operationId: descargarEstadoCuenta
+      parameters:
+        - $ref: '#/components/parameters/CuentaId'
+        - name: mes
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$', examples: ['2026-10'] }
+      responses:
+        '200':
+          description: Archivo CSV.
+          headers:
+            Content-Disposition:
+              schema: { type: string, examples: ['attachment; filename="estado-cuenta-1234-2026-10.csv"'] }
+          content:
+            text/csv:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  # ---------------------------------------------------------------- beneficiarios
+  /beneficiarios:
+    get:
+      tags: [beneficiarios]
+      summary: Lista los beneficiarios del usuario
+      operationId: listarBeneficiarios
+      responses:
+        '200':
+          description: Beneficiarios del usuario, ordenados por alias.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Beneficiario' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [beneficiarios]
+      summary: Registra un beneficiario por CLABE
+      description: |
+        Valida en orden: 18 dígitos, dígito verificador y pertenencia a una cuenta de usuario de la
+        plataforma (R-3.2). Nunca revela el nombre del titular (R-3.6). Tiene rate limit por usuario
+        (R-3.9).
+      operationId: crearBeneficiario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolicitudBeneficiario' }
+      responses:
+        '201':
+          description: Beneficiario creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Beneficiario' }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '409':
+          description: Ya existe un beneficiario del usuario con esa CLABE o ese alias (R-3.7).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemaValidacion' }
+        '422':
+          description: La CLABE es válida pero no pertenece a ninguna cuenta de la plataforma (R-3.5).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problema' }
+              example:
+                type: clabe-not-found
+                title: CLABE no encontrada
+                status: 422
+                detail: La CLABE no corresponde a ninguna cuenta de la plataforma.
+        '429': { $ref: '#/components/responses/DemasiadasPeticiones' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /beneficiarios/{beneficiarioId}:
+    get:
+      tags: [beneficiarios]
+      summary: Consulta un beneficiario propio
+      operationId: obtenerBeneficiario
+      parameters:
+        - $ref: '#/components/parameters/BeneficiarioId'
+      responses:
+        '200':
+          description: El beneficiario.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Beneficiario' }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  # ---------------------------------------------------------------- transferencias
+  /transferencias:
+    post:
+      tags: [transferencias]
+      summary: Envía una transferencia a un beneficiario o a otra cuenta propia
+      description: |
+        Idempotente por `Idempotency-Key` y usuario (D-03):
+        - misma llave y mismo cuerpo normalizado: mismo código y mismo cuerpo que la primera vez,
+          sin mover dinero (R-4.14). Única excepción: la repetición de un `202` no incluye
+          `codigoSimulado` (DD-25);
+        - misma llave y cuerpo distinto: `422 idempotency-key-reused` (R-4.15).
+
+        Resultados (D-14):
+        - `201`: aplicada, con comprobante.
+        - `202`: a tercero por encima del umbral; espera código (R-6.8).
+        - `422` con `transferenciaId`: rechazada y guardada (`saldo-insuficiente`,
+          `limite-diario-excedido`).
+        - `422` sin `transferenciaId`: no se creó nada (`misma-cuenta`, `idempotency-key-reused`).
+        - `404`: origen, destino o beneficiario inexistente o ajeno (R-4.6).
+        - `503`: no se obtuvieron los bloqueos a tiempo; reintentar con la misma llave (R-4.19).
+      operationId: crearTransferencia
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolicitudTransferencia' }
+      responses:
+        '201':
+          description: Transferencia aplicada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comprobante' }
+        '202':
+          description: Transferencia pendiente de confirmación con código.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PendienteConfirmacion' }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422':
+          description: Rechazo de negocio, misma cuenta o llave reutilizada con otro cuerpo.
+          content:
+            application/problem+json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ProblemaRechazo'
+                  - $ref: '#/components/schemas/Problema'
+              examples:
+                saldoInsuficiente:
+                  value:
+                    type: saldo-insuficiente
+                    title: Saldo insuficiente
+                    status: 422
+                    detail: La cuenta origen no tiene saldo suficiente para esta transferencia.
+                    motivo: SALDO_INSUFICIENTE
+                    transferenciaId: 0b6f1f8e-4f0c-4b8e-9a51-7d0e0f6a2c11
+                llaveReutilizada:
+                  value:
+                    type: idempotency-key-reused
+                    title: Llave de idempotencia reutilizada
+                    status: 422
+                    detail: Esta llave ya se usó con datos distintos. Inicia un envío nuevo.
+        '503': { $ref: '#/components/responses/Reintentable' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /transferencias/{transferenciaId}:
+    get:
+      tags: [transferencias]
+      summary: Consulta el estado real de una transferencia propia
+      description: |
+        Si está pendiente y su código ya venció, esta consulta la deja `RECHAZADA` con
+        `CODIGO_EXPIRADO` antes de responder (expiración perezosa, R-6.12).
+      operationId: obtenerTransferencia
+      parameters:
+        - $ref: '#/components/parameters/TransferenciaId'
+      responses:
+        '200':
+          description: La transferencia en su estado actual.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transferencia' }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '503': { $ref: '#/components/responses/Reintentable' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /transferencias/{transferenciaId}/confirmar:
+    post:
+      tags: [transferencias]
+      summary: Confirma con el código de un solo uso una transferencia pendiente
+      description: |
+        Vuelve a validar saldo y límite con la hora de la confirmación (R-6.10).
+        - Código correcto y vigente: `201` con comprobante, o `422` si ahora falta saldo o límite.
+        - Código incorrecto: `422 codigo-incorrecto` con `intentosRestantes`; el intento queda
+          contado aunque la petición falle después (R-6.11). Al tercer fallo: `422 codigo-agotado`.
+        - Código vencido: `422 codigo-expirado` (R-6.12).
+        - Ya aplicada: el mismo `201` con el mismo comprobante, sin consumir intentos (R-6.13).
+        - Ya rechazada: el mismo `422` de su rechazo.
+      operationId: confirmarTransferencia
+      parameters:
+        - $ref: '#/components/parameters/TransferenciaId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolicitudConfirmacion' }
+      responses:
+        '201':
+          description: Transferencia aplicada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comprobante' }
+        '400': { $ref: '#/components/responses/ErrorValidacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422':
+          description: Código incorrecto, o transferencia rechazada.
+          content:
+            application/problem+json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ProblemaCodigoIncorrecto'
+                  - $ref: '#/components/schemas/ProblemaRechazo'
+        '503': { $ref: '#/components/responses/Reintentable' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  # ---------------------------------------------------------------- límites
+  /limites:
+    get:
+      tags: [limites]
+      summary: Límite diario, consumido hoy y disponible
+      description: El día es `[00:00, 24:00)` en `America/Mexico_City` (R-6.5, R-6.7).
+      operationId: obtenerLimites
+      responses:
+        '200':
+          description: Límites del usuario.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Limites' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token de 15 minutos (RNF-02).
+    cookieRefresh:
+      type: apiKey
+      in: cookie
+      name: billetera_refresh
+      description: Refresh token de la web. `HttpOnly; Secure; SameSite=Strict; Path=/api/auth`.
+
+  parameters:
+    CuentaId:
+      name: cuentaId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BeneficiarioId:
+      name: beneficiarioId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TransferenciaId:
+      name: transferenciaId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID generado por el cliente, uno por intento (D-03, D-16, D-17).
+      schema: { type: string, format: uuid }
+
+  headers:
+    RetryAfter:
+      description: Segundos que el cliente debe esperar antes de reintentar.
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    ErrorValidacion:
+      description: La entrada no pasa el esquema (`validation-error`).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemaValidacion' }
+          example:
+            type: validation-error
+            title: Datos inválidos
+            status: 400
+            detail: Revisa los campos señalados.
+            errores:
+              - campo: body.montoCentavos
+                mensaje: Debe ser un entero mayor que 0.
+    NoAutenticado:
+      description: Falta el token, es inválido o expiró, o las credenciales no son correctas (`unauthorized`).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+          example:
+            type: unauthorized
+            title: No autenticado
+            status: 401
+            detail: Inicia sesión de nuevo.
+    NoEncontrado:
+      description: El recurso no existe o no es del usuario; las dos causas son indistinguibles (`not-found`).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+          example:
+            type: not-found
+            title: No encontrado
+            status: 404
+            detail: El recurso no existe.
+    DemasiadasPeticiones:
+      description: Rate limit excedido (`too-many-requests`).
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    Reintentable:
+      description: |
+        Error temporal, como no obtener los bloqueos a tiempo (`retryable`). No se movió dinero;
+        reintentar con la misma `Idempotency-Key`.
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    ErrorInterno:
+      description: Error inesperado (`internal-error`). Nunca incluye trazas, SQL ni nombres internos.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+
+  schemas:
+    # ------------------------------------------------------------ tipos base
+    Uuid:
+      type: string
+      format: uuid
+    Centavos:
+      description: Monto en centavos enteros. Nunca decimales (D-18).
+      type: integer
+      minimum: 1
+      maximum: 100000000000
+    CentavosConSigno:
+      description: Monto en centavos enteros, negativo para cargos.
+      type: integer
+      minimum: -100000000000
+      maximum: 100000000000
+    Instante:
+      description: ISO 8601 en UTC con 6 decimales (DD-22).
+      type: string
+      format: date-time
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$'
+      examples: ['2026-11-14T16:05:09.123456Z']
+    Clabe:
+      description: 18 dígitos con dígito verificador válido (R-3.2 a R-3.4).
+      type: string
+      pattern: '^[0-9]{18}$'
+    ClabeTerminacion:
+      description: Últimos 4 dígitos de una CLABE.
+      type: string
+      pattern: '^[0-9]{4}$'
+    TextoCorto:
+      description: Sin espacios al inicio ni al final y sin caracteres de control (DD-16).
+      type: string
+      pattern: '^[^\s\p{Cc}](?:[^\p{Cc}]*[^\s\p{Cc}])?$'
+    TipoMovimiento:
+      type: string
+      enum: [DEPOSITO, ENVIO, RECEPCION, TRASPASO_SALIDA, TRASPASO_ENTRADA]
+    TipoTransferencia:
+      description: Tipos visibles para un usuario. `FONDEO` nunca se expone; un depósito aparece como movimiento `DEPOSITO`.
+      type: string
+      enum: [TRASPASO, TERCERO]
+    EstadoTransferencia:
+      type: string
+      enum: [PENDIENTE_CONFIRMACION, APLICADA, RECHAZADA]
+    MotivoRechazo:
+      type: string
+      enum: [SALDO_INSUFICIENTE, LIMITE_DIARIO_EXCEDIDO, CODIGO_AGOTADO, CODIGO_EXPIRADO]
+
+    # ------------------------------------------------------------ auth
+    Correo:
+      type: string
+      format: email
+      minLength: 3
+      maxLength: 254
+      description: Se normaliza a minúsculas y sin espacios antes de validar.
+    SolicitudRegistro:
+      type: object
+      additionalProperties: false
+      required: [correo, contrasena]
+      properties:
+        correo: { $ref: '#/components/schemas/Correo' }
+        contrasena:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: Política completa en design.md §5.
+    UsuarioRegistrado:
+      type: object
+      required: [id, correo]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        correo: { $ref: '#/components/schemas/Correo' }
+    SolicitudLogin:
+      type: object
+      additionalProperties: false
+      required: [correo, contrasena, cliente]
+      properties:
+        correo: { $ref: '#/components/schemas/Correo' }
+        contrasena: { type: string, minLength: 1, maxLength: 128 }
+        cliente:
+          type: string
+          enum: [web, movil]
+          description: Define si el refresh viaja en cookie (`web`) o en el cuerpo (`movil`). DD-24.
+    SolicitudRefresh:
+      type: object
+      additionalProperties: false
+      properties:
+        refreshToken:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{43}$'
+          description: Solo móvil. 256 bits en base64url sin relleno.
+    Tokens:
+      type: object
+      required: [accessToken, accessExpiraEn]
+      properties:
+        accessToken: { type: string }
+        accessExpiraEn: { $ref: '#/components/schemas/Instante' }
+        refreshToken:
+          type: string
+          description: Solo cuando el cliente es móvil (login con `cliente = movil` o refresh por cuerpo).
+        refreshExpiraEn:
+          $ref: '#/components/schemas/Instante'
+
+    # ------------------------------------------------------------ cuentas
+    Cuenta:
+      type: object
+      required: [id, nombre, clabe, saldoCentavos]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        nombre: { type: string, enum: [Principal, Ahorro] }
+        clabe: { $ref: '#/components/schemas/Clabe' }
+        saldoCentavos:
+          type: integer
+          minimum: 0
+          description: Saldo disponible en centavos.
+    Movimiento:
+      type: object
+      required: [id, transferenciaId, tipo, montoCentavos, fecha, concepto, referencia, contraparte]
+      properties:
+        id:
+          type: string
+          description: Identificador opaco del movimiento.
+        transferenciaId: { $ref: '#/components/schemas/Uuid' }
+        tipo: { $ref: '#/components/schemas/TipoMovimiento' }
+        montoCentavos: { $ref: '#/components/schemas/CentavosConSigno' }
+        fecha: { $ref: '#/components/schemas/Instante' }
+        concepto: { type: string }
+        referencia:
+          type: [string, 'null']
+          description: '`null` en un depósito.'
+        contraparte: { $ref: '#/components/schemas/Contraparte' }
+    Contraparte:
+      description: Con quién se hizo el movimiento, sin revelar datos del titular (design.md §8).
+      type: object
+      required: [etiqueta, clabeTerminacion]
+      properties:
+        etiqueta:
+          type: string
+          description: Alias del beneficiario, nombre de la cuenta propia, "Depósito" o "Transferencia recibida".
+        clabeTerminacion:
+          oneOf:
+            - $ref: '#/components/schemas/ClabeTerminacion'
+            - type: 'null'
+    PaginaMovimientos:
+      type: object
+      required: [items, siguienteCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/Movimiento' }
+        siguienteCursor:
+          type: [string, 'null']
+
+    # ------------------------------------------------------------ beneficiarios
+    SolicitudBeneficiario:
+      type: object
+      additionalProperties: false
+      required: [nombre, alias, clabe]
+      properties:
+        nombre:
+          allOf: [{ $ref: '#/components/schemas/TextoCorto' }]
+          minLength: 1
+          maxLength: 100
+        alias:
+          allOf: [{ $ref: '#/components/schemas/TextoCorto' }]
+          minLength: 1
+          maxLength: 40
+        clabe: { $ref: '#/components/schemas/Clabe' }
+    Beneficiario:
+      type: object
+      required: [id, nombre, alias, clabe, esCuentaPropia]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        nombre: { type: string }
+        alias: { type: string }
+        clabe: { $ref: '#/components/schemas/Clabe' }
+        esCuentaPropia:
+          type: boolean
+          description: La CLABE es de una cuenta del mismo usuario; enviarle es un traspaso (R-3.8).
+
+    # ------------------------------------------------------------ transferencias
+    DestinoBeneficiario:
+      type: object
+      additionalProperties: false
+      required: [tipo, beneficiarioId]
+      properties:
+        tipo: { const: BENEFICIARIO }
+        beneficiarioId: { $ref: '#/components/schemas/Uuid' }
+    DestinoCuentaPropia:
+      type: object
+      additionalProperties: false
+      required: [tipo, cuentaId]
+      properties:
+        tipo: { const: CUENTA_PROPIA }
+        cuentaId: { $ref: '#/components/schemas/Uuid' }
+    SolicitudTransferencia:
+      type: object
+      additionalProperties: false
+      required: [cuentaOrigenId, destino, montoCentavos, concepto, referencia]
+      properties:
+        cuentaOrigenId: { $ref: '#/components/schemas/Uuid' }
+        destino:
+          oneOf:
+            - $ref: '#/components/schemas/DestinoBeneficiario'
+            - $ref: '#/components/schemas/DestinoCuentaPropia'
+          discriminator:
+            propertyName: tipo
+            mapping:
+              BENEFICIARIO: '#/components/schemas/DestinoBeneficiario'
+              CUENTA_PROPIA: '#/components/schemas/DestinoCuentaPropia'
+        montoCentavos: { $ref: '#/components/schemas/Centavos' }
+        concepto:
+          allOf: [{ $ref: '#/components/schemas/TextoCorto' }]
+          minLength: 1
+          maxLength: 40
+        referencia:
+          type: string
+          pattern: '^[0-9]{1,7}$'
+          description: Referencia numérica de 1 a 7 dígitos, como texto para conservar ceros a la izquierda.
+    ResumenCuentaOrigen:
+      type: object
+      required: [cuentaId, nombre, clabeTerminacion]
+      properties:
+        cuentaId: { $ref: '#/components/schemas/Uuid' }
+        nombre: { type: string }
+        clabeTerminacion: { $ref: '#/components/schemas/ClabeTerminacion' }
+    ResumenDestino:
+      type: object
+      required: [etiqueta, nombre, clabeTerminacion]
+      properties:
+        etiqueta:
+          type: string
+          description: Alias del beneficiario o nombre de la cuenta propia.
+        nombre:
+          type: string
+          description: Nombre del beneficiario capturado por el usuario, o nombre de la cuenta propia.
+        clabeTerminacion: { $ref: '#/components/schemas/ClabeTerminacion' }
+    Comprobante:
+      description: Comprobante de una transferencia aplicada. Contenido justificado en design.md §6.6.
+      type: object
+      required:
+        [transferenciaId, estado, tipo, montoCentavos, concepto, referencia, origen, destino, creadaEn, aplicadaEn]
+      properties:
+        transferenciaId: { $ref: '#/components/schemas/Uuid' }
+        estado: { const: APLICADA }
+        tipo: { $ref: '#/components/schemas/TipoTransferencia' }
+        montoCentavos: { $ref: '#/components/schemas/Centavos' }
+        concepto: { type: string }
+        referencia: { type: string }
+        origen: { $ref: '#/components/schemas/ResumenCuentaOrigen' }
+        destino: { $ref: '#/components/schemas/ResumenDestino' }
+        creadaEn: { $ref: '#/components/schemas/Instante' }
+        aplicadaEn: { $ref: '#/components/schemas/Instante' }
+    PendienteConfirmacion:
+      type: object
+      required: [transferenciaId, estado, montoCentavos, codigoExpiraEn]
+      properties:
+        transferenciaId: { $ref: '#/components/schemas/Uuid' }
+        estado: { const: PENDIENTE_CONFIRMACION }
+        montoCentavos: { $ref: '#/components/schemas/Centavos' }
+        codigoExpiraEn: { $ref: '#/components/schemas/Instante' }
+        codigoSimulado:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: |
+            Solo con `OTP_SIMULADO=true` y solo en la primera respuesta; una repetición con la misma
+            llave no lo incluye (DD-25). Nunca existe en producción (R-6.17).
+    Transferencia:
+      description: Estado real de una transferencia propia, en cualquier estado (R-4.10).
+      type: object
+      required:
+        [id, estado, tipo, montoCentavos, concepto, referencia, cuentaOrigenId, destino, creadaEn, aplicadaEn, motivoRechazo, codigoExpiraEn]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        estado: { $ref: '#/components/schemas/EstadoTransferencia' }
+        tipo: { $ref: '#/components/schemas/TipoTransferencia' }
+        montoCentavos: { $ref: '#/components/schemas/Centavos' }
+        concepto: { type: string }
+        referencia: { type: string }
+        cuentaOrigenId: { $ref: '#/components/schemas/Uuid' }
+        destino: { $ref: '#/components/schemas/ResumenDestino' }
+        creadaEn: { $ref: '#/components/schemas/Instante' }
+        aplicadaEn:
+          oneOf:
+            - $ref: '#/components/schemas/Instante'
+            - type: 'null'
+        motivoRechazo:
+          oneOf:
+            - $ref: '#/components/schemas/MotivoRechazo'
+            - type: 'null'
+        codigoExpiraEn:
+          description: Solo si está `PENDIENTE_CONFIRMACION`.
+          oneOf:
+            - $ref: '#/components/schemas/Instante'
+            - type: 'null'
+    SolicitudConfirmacion:
+      type: object
+      additionalProperties: false
+      required: [codigo]
+      properties:
+        codigo:
+          type: string
+          pattern: '^[0-9]{6}$'
+
+    # ------------------------------------------------------------ límites
+    Limites:
+      type: object
+      required: [limiteCentavos, consumidoCentavos, disponibleCentavos, dia, reiniciaEn]
+      properties:
+        limiteCentavos: { type: integer, minimum: 1 }
+        consumidoCentavos: { type: integer, minimum: 0 }
+        disponibleCentavos: { type: integer, minimum: 0 }
+        dia:
+          type: string
+          format: date
+          description: Día actual en `America/Mexico_City`.
+        reiniciaEn: { $ref: '#/components/schemas/Instante' }
+
+    # ------------------------------------------------------------ problemas (RFC 7807)
+    TipoProblema:
+      description: Catálogo de `type` (design.md §7). Referencias URI relativas en kebab-case (DD-23).
+      type: string
+      enum:
+        - validation-error
+        - unauthorized
+        - not-found
+        - correo-ya-registrado
+        - beneficiario-duplicado
+        - clabe-not-found
+        - misma-cuenta
+        - idempotency-key-reused
+        - invalid-cursor
+        - saldo-insuficiente
+        - limite-diario-excedido
+        - codigo-incorrecto
+        - codigo-agotado
+        - codigo-expirado
+        - too-many-requests
+        - retryable
+        - internal-error
+    Problema:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type: { $ref: '#/components/schemas/TipoProblema' }
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string }
+    ProblemaValidacion:
+      allOf:
+        - $ref: '#/components/schemas/Problema'
+        - type: object
+          required: [errores]
+          properties:
+            errores:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [campo, mensaje]
+                properties:
+                  campo:
+                    type: string
+                    description: Ruta del campo, por ejemplo `body.montoCentavos` o `headers.idempotency-key`.
+                  mensaje: { type: string }
+    ProblemaRechazo:
+      description: Transferencia guardada como `RECHAZADA` (D-03, D-14).
+      allOf:
+        - $ref: '#/components/schemas/Problema'
+        - type: object
+          required: [motivo, transferenciaId]
+          properties:
+            motivo: { $ref: '#/components/schemas/MotivoRechazo' }
+            transferenciaId: { $ref: '#/components/schemas/Uuid' }
+    ProblemaCodigoIncorrecto:
+      allOf:
+        - $ref: '#/components/schemas/Problema'
+        - type: object
+          required: [transferenciaId, intentosRestantes]
+          properties:
+            transferenciaId: { $ref: '#/components/schemas/Uuid' }
+            intentosRestantes: { type: integer, minimum: 1, maximum: 2 }

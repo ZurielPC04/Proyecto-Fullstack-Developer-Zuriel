@@ -971,3 +971,141 @@ CLABE de Fondeo: `999000000000000001`. Los primeros 17 dígitos `999000000000000
 > **Motivo:** los usuarios del video pasan por el mismo camino que producción, y el volumen se genera en segundos sin saltarse ninguna garantía de la base. Que el volumen no respete el límite se declara aquí y en el README, en lugar de ocultarlo.
 
 ---
+
+## 4. Contrato de la API
+
+El contrato completo está en [`specs/openapi.yaml`](./openapi.yaml) (OpenAPI 3.1, JSON Schema 2020-12). **Es la fuente de verdad del contrato**: un cambio en la API empieza en ese archivo, y los tipos de los clientes se generan desde él (§4.3). Esta sección resume y justifica sus decisiones.
+
+### 4.1 Convenciones
+
+| Aspecto | Convención |
+|---|---|
+| Prefijo | Todo bajo `/api`, sin versión en la ruta; la versión del contrato vive en `info.version` |
+| Nombres en JSON | camelCase: `montoCentavos`, `siguienteCursor`, `transferenciaId` |
+| Montos | Enteros JSON en centavos, con sufijo `Centavos`. Nunca decimales ni texto (D-18) |
+| Identificadores | `uuid` en texto. El `id` de un movimiento es texto opaco |
+| Instantes | ISO 8601 en UTC con 6 decimales: `2026-11-14T16:05:09.123456Z` (DD-22) |
+| Días de calendario | `AAAA-MM-DD`, en `America/Mexico_City` (D-15) |
+| Listas | Siempre envueltas en un objeto: `{ items }` o `{ items, siguienteCursor }` |
+| Errores | `application/problem+json`, RFC 7807, con el catálogo de §7 (DD-23) |
+| Cuerpos de entrada | `additionalProperties: false`; un campo desconocido es un error de validación |
+| Request ID | Header `X-Request-Id` en todas las respuestas (DD-09) |
+
+> **DD-21 · Aprobada · JSON en camelCase, sin versión en la ruta y listas envueltas**
+> **Contexto:** `requirements.md` y D-18 nombran el monto `monto_centavos` (snake_case), pero D-11 y D-14 ya usan `siguienteCursor`, `transferenciaId` y `codigoSimulado` (camelCase). Hay que fijar una sola convención.
+> **Decisión:**
+> - Todo el JSON va en camelCase. El campo del monto es `montoCentavos`; `monto_centavos` queda como nombre de la columna. R-4.8, R-4.35 y D-18 se leen con ese nombre: el requisito es el mismo (entero JSON en centavos con tope).
+> - Sin `/v1` en la ruta: hay un solo consumidor por cliente y se despliegan juntos.
+> - Toda lista va dentro de un objeto, para poder agregar metadatos sin romper a los clientes.
+> **Motivo:** camelCase es lo natural en TypeScript de los tres clientes, y evita mapear nombres entre la API y los tipos generados.
+
+> **DD-22 · Aprobada · Formato de los instantes en la API**
+> **Contexto:** DD-07 lee `timestamptz` como texto para no perder microsegundos, pero el texto de PostgreSQL (`2026-11-14 16:05:09.123456+00`) no es ISO 8601, y omite la fracción cuando vale cero.
+> **Decisión:** una función pura de `shared`, `instanteIso(textoPg)`, lo convierte **operando sobre el texto**: cambia el espacio por `T`, completa la fracción a 6 dígitos y cambia `+00` por `Z`. Nunca pasa por `Date`. La conexión en `TimeZone=UTC` (DD-07) garantiza el sufijo `+00`; si llega otro, la función lanza un error.
+> **Motivo:** un solo formato, con precisión de microsegundos, igual al que usa el cursor (D-11).
+
+> **DD-23 · Aprobada · Formato del `type` de los problemas y códigos de los duplicados**
+> **Contexto:** RNF-01 fija `type` estables en inglés (`not-found`, `idempotency-key-reused`, `invalid-cursor`, `clabe-not-found`, `retryable`) y R-4.3 dice que, en un rechazo, "`type` es el motivo" (`SALDO_INSUFICIENTE`). RFC 7807 pide que `type` sea una referencia URI. Además, `requirements.md` §12.2 deja abiertos los códigos del correo y del beneficiario duplicados.
+> **Decisión:**
+> - `type` es una referencia URI relativa en kebab-case. Los de RNF-01 se conservan tal cual; los demás se escriben en español con el vocabulario del glosario.
+> - En un rechazo, `type` es el motivo en kebab-case (`saldo-insuficiente`), y la extensión `motivo` lleva el valor del catálogo (`SALDO_INSUFICIENTE`), junto con `transferenciaId`.
+> - Correo ya registrado y beneficiario duplicado responden **`409`** (`correo-ya-registrado`, `beneficiario-duplicado`). Esto cierra el pendiente §12.2.
+> - Extensiones permitidas: `errores` (validación), `motivo` y `transferenciaId` (rechazo), `intentosRestantes` (código incorrecto). Ninguna otra.
+> **Motivo:** un solo formato de `type` para todos los errores. El cliente decide por `type` y muestra el motivo con un mapa de textos. `409` describe un conflicto con un recurso existente; se distingue de `422`, que se reserva para reglas de negocio sobre una entrada bien formada. El catálogo completo y el resto de los códigos van en §7.
+> **Concesión consciente: el `409 correo-ya-registrado` revela si un correo existe.** Contradice el principio de R-1.7 (el login no revela la existencia del correo) y de D-10, pero se acepta:
+> - R-1.4 exige rechazar el registro duplicado. Sin un paso de verificación por correo no hay forma de rechazarlo sin decir por qué; un `201` falso dejaría al usuario creyendo que tiene cuenta.
+> - Se mitiga con el rate limit de registro (D-20, R-1.18, §11), que encarece enumerar correos en masa.
+> - **Va en "qué haría con más tiempo" del README:** registro con verificación por correo. El endpoint respondería siempre `202` ("te enviamos un correo") y el aviso de cuenta existente llegaría solo al buzón del dueño, de modo que la respuesta HTTP no distinguiría un correo nuevo de uno registrado.
+>
+> `409 beneficiario-duplicado` no tiene ese problema: solo compara contra los beneficiarios del propio usuario.
+
+### 4.2 Endpoints
+
+Todas las rutas van bajo `/api`. 🔒 indica que exigen access token.
+
+| Método y ruta | 🔒 | Rate limit | Éxito | Errores propios | Requisitos |
+|---|---|---|---|---|---|
+| `GET /health` | | | `200` | `503` | — |
+| `POST /auth/registro` | | ✓ (§11) | `201` | `400`, `409`, `429` | R-1.1 a R-1.5, R-1.18 |
+| `POST /auth/login` | | ✓ (§11) | `200` + cookie o `refreshToken` | `400`, `401`, `429` | R-1.6, R-1.7, R-1.13, R-1.18 |
+| `POST /auth/refresh` | | | `200` | `400`, `401` | R-1.8 a R-1.10, R-1.14 a R-1.17 |
+| `POST /auth/logout` | | | `204` | `400` | R-1.12 |
+| `GET /cuentas` | 🔒 | | `200` | — | R-2.1 a R-2.3 |
+| `GET /cuentas/{cuentaId}` | 🔒 | | `200` | `404` | R-2.4 |
+| `GET /cuentas/{cuentaId}/movimientos` | 🔒 | | `200` | `400`, `404` | R-5.1 a R-5.10 |
+| `GET /cuentas/{cuentaId}/estado-cuenta?mes=` | 🔒 | | `200 text/csv` | `400`, `404` | R-B1.1 a R-B1.5 |
+| `GET /beneficiarios` | 🔒 | | `200` | — | R-3.11 |
+| `POST /beneficiarios` | 🔒 | ✓ (§11) | `201` | `400`, `409`, `422`, `429` | R-3.1 a R-3.9 |
+| `GET /beneficiarios/{beneficiarioId}` | 🔒 | | `200` | `404` | R-3.11 |
+| `POST /transferencias` | 🔒 | | `201`, `202` | `400`, `404`, `422`, `503` | R-4.1 a R-4.19, R-6.1 a R-6.9 |
+| `GET /transferencias/{transferenciaId}` | 🔒 | | `200` | `404`, `503` | R-4.10, R-6.12 |
+| `POST /transferencias/{transferenciaId}/confirmar` | 🔒 | | `201` | `400`, `404`, `422`, `503` | R-6.10 a R-6.14 |
+| `GET /limites` | 🔒 | | `200` | — | R-6.7 |
+| `GET /docs`, `GET /openapi.yaml` | | | `200` | — | RNF-28 |
+
+Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
+
+**No existen** endpoints para abrir cuentas (D-20), borrar beneficiarios, cancelar pendientes, reenviar el código (D-07) ni operar Fondeo (D-02).
+
+**Notas de diseño**
+
+- **`GET /transferencias/{id}` puede escribir.** Si la transferencia está pendiente y su código venció, la deja `RECHAZADA/CODIGO_EXPIRADO` antes de responder (D-14, R-6.12). Es un `GET` idempotente en su efecto: dos llamadas dejan el mismo estado. Por eso también puede responder `503`.
+- **Confirmar es idempotente sin llave.** El `id` de la transferencia ya identifica la operación: confirmar una aplicada devuelve el mismo `201`, y confirmar una rechazada devuelve el mismo `422` (R-6.13).
+- **Respuestas de `POST /transferencias` y su repetición.** Las tres salen de `respuestaDeTransferencia(fila)` (§2.1, §6.2), con la excepción de DD-25.
+- **Valores anticipados.** `openapi.yaml` ya fija dos valores que se justifican en el bloque D: la longitud de la contraseña (12 a 128 caracteres, §5) y los campos del comprobante (§6.6). Si esas secciones los cambian, el contrato se actualiza en el mismo commit.
+
+> **DD-24 · Aprobada · Transporte del refresh token entre web y móvil**
+> **Contexto:** D-06 dice que la API acepta el refresh por cookie (web) o por cuerpo (móvil) y que nunca le devuelve el refresh a la web en el cuerpo, pero no dice cómo sabe la API qué cliente es al iniciar sesión, ni si el registro abre sesión.
+> **Opciones:** (1) detectar el cliente por `User-Agent`; (2) un header propio; (3) un campo explícito en el login.
+> **Decisión:**
+> - `POST /auth/login` recibe `cliente: "web" | "movil"`. Con `web`, el refresh va **solo** en la cookie `billetera_refresh`; con `movil`, solo en el cuerpo.
+> - `POST /auth/refresh` y `POST /auth/logout` aceptan el refresh por cookie **o** por cuerpo; si llegan los dos, o ninguno en el refresh, responden `400`. **La respuesta usa el mismo canal por el que llegó el refresh**, sin importar lo que diga el cliente: un refresh por cookie nunca produce un refresh en el cuerpo.
+> - Con cookie, el refresh y el logout exigen `X-Requested-With: fetch` (R-1.16).
+> - El registro **no** abre sesión: responde `201` con `{ id, correo }`, y el cliente llama después a `/auth/login`.
+> - El logout responde `204` aunque el refresh ya no sea válido, y siempre borra la cookie.
+> **Motivo:** el canal de respuesta queda atado al canal de entrada, así que un XSS en la web no puede convertir la cookie en un refresh legible. Que el registro no abra sesión deja un solo lugar donde se emiten tokens y se escribe la cookie.
+
+> **DD-25 · Aprobada · La repetición de un `202` no incluye `codigoSimulado`**
+> **Contexto:** R-4.14 exige que la repetición con la misma llave devuelva el mismo cuerpo, incluidas las pendientes "sin generar un código nuevo". R-6.17 pone el código simulado en `codigoSimulado` de la respuesta `202`. Pero R-6.16 y D-07 prohíben guardar el código en claro: solo se guarda su HMAC, así que la repetición no puede reproducirlo.
+> **Opciones:** (1) guardar el código cifrado solo en modo simulado; (2) mandarlo en un header en lugar del cuerpo; (3) omitirlo en la repetición.
+> **Decisión:** la opción 3. La repetición de un `202` es idéntica a la primera respuesta salvo por `codigoSimulado`, que solo aparece la primera vez. Es la única excepción a R-4.14, y solo existe con `OTP_SIMULADO=true`, que nunca está activo en producción (RNF-15). La prueba de idempotencia compara los cuerpos sin ese campo y verifica aparte que la repetición no lo trae.
+> **Motivo:** la opción 1 crea justo el dato que R-6.16 prohíbe, aunque sea en desarrollo. La opción 2 contradice R-6.17, que pide el campo en la respuesta. En producción el código llega por otro canal (SMS o correo), así que la repetición se comporta igual que un proveedor real: el usuario ya recibió el código.
+> **Recuperar el código simulado en los clientes.** Si el usuario recarga la web o reabre la app en la pantalla del código, el reenvío con la misma llave (R-4.25, R-4.31) devuelve el `202` sin `codigoSimulado`, y en modo simulado no habría otro canal para recibirlo. Para eso:
+> - Si la primera respuesta `202` trae `codigoSimulado`, el cliente lo guarda **junto con el intento**: la web en `sessionStorage` (D-16) y la app móvil en `expo-secure-store` (D-17). Al reanudar, lo toma de ahí y no de la respuesta.
+> - Se borra con el intento: cuando la transferencia se resuelve (`201` o `422`) y al cerrar sesión (R-1.12).
+> - **En producción el campo no existe**, porque la API no arranca con `OTP_SIMULADO=true` (RNF-15). Los clientes solo guardan lo que trae la respuesta, así que no guardan nada; no hay una rama de código que dependa del entorno.
+> - Las pruebas de web (RNF-25) y de móvil (RNF-26) cubren la recarga en la pantalla del código: se recupera el código guardado y la confirmación funciona.
+
+> **DD-26 · Aprobada · El destino de una transferencia es una unión discriminada**
+> **Contexto:** R-4.6 permite como destino un beneficiario del usuario o una cuenta propia. Hay que expresarlo en el cuerpo sin ambigüedad.
+> **Opciones:** (1) dos campos opcionales, `beneficiarioId` y `cuentaDestinoId`, con la regla "exactamente uno"; (2) una unión discriminada.
+> **Decisión:** `destino: { tipo: "BENEFICIARIO", beneficiarioId } | { tipo: "CUENTA_PROPIA", cuentaId }`, con `discriminator` en OpenAPI y `z.discriminatedUnion` en Zod. El hash de idempotencia (D-03) incluye `destino.tipo` y el id. `Beneficiario` incluye además `esCuentaPropia`, para que los clientes muestren que enviarle es un traspaso (R-3.8) sin revelar nada del titular.
+> **Motivo:** un tipo que no admite estados inválidos ("ninguno" o "los dos"), así que no hace falta una regla aparte. El tipo de transferencia (`TRASPASO` o `TERCERO`) **no** sale de `destino.tipo`: lo decide siempre el dueño real de la cuenta destino (D-04, DD-17).
+
+### 4.3 Tipos generados y documentación navegable
+
+**Tipos desde el contrato (RNF-18)**
+
+1. `npm run gen:tipos` ejecuta `openapi-typescript specs/openapi.yaml -o packages/shared/src/api/openapi.ts`.
+2. El archivo generado **se versiona**. En CI, un paso lo regenera y falla si `git diff --exit-code` encuentra diferencias: el contrato y los tipos nunca se desincronizan.
+3. `shared` reexporta alias legibles: `type Cuenta = components['schemas']['Cuenta']`, `type Comprobante = …`.
+4. La API tipa las respuestas de sus controladores con esos alias, y web y móvil tipan su cliente `fetch` con `paths`.
+
+**Esquemas Zod y contrato.** Los esquemas Zod de entrada viven en `shared/src/esquemas` y se escriben a mano, porque llevan refinamientos que JSON Schema no expresa (dígito verificador de la CLABE, `montoTextoACentavos`). Para que no se desvíen del contrato:
+
+- Una prueba de tipos (`expectTypeOf` de Vitest) verifica que `z.infer<typeof esquema>` y el tipo generado son mutuamente asignables, para cada cuerpo de entrada.
+- Las pruebas de integración validan **cada respuesta** de la API contra el esquema de su operación y código en `openapi.yaml`, con Ajv en modo JSON Schema 2020-12. Una respuesta que no cumple el contrato hace fallar la prueba aunque el resto de las aserciones pase.
+
+**Documentación navegable (RNF-28)**
+
+- `GET /api/docs` sirve Swagger UI (`swagger-ui-express`) con el contrato.
+- `GET /api/openapi.yaml` sirve el archivo tal cual, para Redoc o Postman.
+- Se monta solo si `NODE_ENV !== 'production'`.
+- En CI, `redocly lint specs/openapi.yaml` valida el documento.
+
+> **DD-27 · Aprobada · Verificación del contrato y documentación solo fuera de producción**
+> **Contexto:** RNF-18 pide tipos generados desde el contrato, pero un contrato que el servidor no cumple genera tipos que mienten.
+> **Decisión:** las cuatro verificaciones anteriores (diff de tipos generados, prueba de tipos de Zod, validación de respuestas con Ajv y `redocly lint`) corren en CI. Swagger UI no se monta en producción.
+> **Motivo:** cada una cierra un camino distinto por el que el contrato puede mentir: tipos viejos, Zod desviado, servidor desviado y documento inválido. En producción, publicar el contrato completo solo amplía la superficie de reconocimiento sin beneficio para el usuario; los equipos lo consultan en el repositorio.
+
+---
