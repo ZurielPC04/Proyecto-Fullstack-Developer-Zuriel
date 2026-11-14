@@ -320,7 +320,11 @@ Decisiones cerradas durante el interrogatorio previo a `requirements.md`. Todos 
   - `201`: aplicada, con el comprobante.
   - `202`: pendiente, con el id de la transferencia y la expiración del código; repetir no genera un código nuevo.
   - `422`: rechazada, con un problem cuyo `type` es el motivo y que incluye `transferenciaId`.
-- **Errores de validación (no son motivos de rechazo):** transferir a la misma cuenta (origen = destino) y un destino inexistente o fuera de la plataforma responden `422` **antes** de crear la fila de transferencia. `CHECK (cuenta_origen_id <> cuenta_destino_id)` en `transferencia` lo garantiza en la base. Estas peticiones no crean fila; el alcance de D-03 ("los rechazos de negocio se guardan") se limita a los cuatro motivos anteriores.
+- **Errores previos a crear la fila (no son motivos de rechazo):**
+  - Transferir a la misma cuenta (origen = destino) responde `422` **antes** de crear la fila de transferencia. `CHECK (cuenta_origen_id <> cuenta_destino_id)` en `transferencia` lo garantiza en la base.
+  - El destino solo puede ser un beneficiario del usuario o una cuenta propia. Un destino ajeno o inexistente responde `404 not-found`, idéntico en ambos casos (D-10).
+  - Estas peticiones no crean fila; el alcance de D-03 ("los rechazos de negocio se guardan") se limita a los cuatro motivos anteriores.
+- _Precisada durante la fase de requisitos (R-4.6):_ la primera versión respondía `422` para un destino inexistente o fuera de la plataforma. Esa diferencia frente al `404` de un recurso ajeno permitía averiguar qué identificadores de cuenta existen.
 
 **Motivo:** cada estado es observable y distinto, sin transiciones de más que probar. La base impide estados ilegales y asientos fuera de lugar, y la expiración perezosa evita un proceso en segundo plano sin perder el estado real.
 
