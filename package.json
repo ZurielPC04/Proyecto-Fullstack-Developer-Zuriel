@@ -1,0 +1,36 @@
+{
+  "name": "billetera",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/shared",
+    "api",
+    "web",
+    "mobile"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w packages/shared",
+    "prebuild": "npm run build:shared",
+    "build": "npm run build --workspaces --if-present",
+    "predev": "npm run build:shared",
+    "lint": "eslint .",
+    "pretypecheck": "npm run build:shared",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "pretest": "npm run build:shared",
+    "test": "npm run test --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.10.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2"
+  }
+}

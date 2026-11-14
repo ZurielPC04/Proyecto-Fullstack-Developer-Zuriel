@@ -1,2 +1,8 @@
 .claude/settings.local.json
 docs/enunciado.md
+
+# Dependencias y artefactos de compilación
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
