@@ -151,6 +151,51 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 ---
 
+### Sesión 4 — 2026-11-14 · Fase de Diseño (`design.md` y `openapi.yaml`)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `spec-driven-development`, invocada por mí con `/spec-driven-development`. Segunda de las tres fases (Requisitos → **Diseño** → Tareas).
+
+**Método: por bloques, con aprobación en cada uno.**
+1. La IA propuso primero solo el índice de secciones de `design.md`, y yo lo aprobé.
+2. Escribió el documento en seis bloques y se detuvo al terminar cada uno: A (secciones 0 a 2), B (3), C (4 y `specs/openapi.yaml`), D (5 a 7), E (8 a 12) y F (13 a 17).
+3. Toda decisión nueva que no estaba en `decisiones.md` se marcó como `DD-nn · Propuesta`, con contexto, opciones, decisión y motivo. Al final de cada bloque, la IA listó las DD nuevas; yo las aprobé, a veces con precisiones, y solo entonces se hizo el commit del bloque.
+4. Al final de cada bloque, la IA verificó que no hubiera secciones duplicadas. En el último, un script comprobó que los 140 criterios de `requirements.md` aparecen en la matriz de §17.
+
+**Prompt clave:**
+> "Fase de Diseño de la billetera digital MXN. Lee: @docs/enunciado.md, @specs/requirements.md, @specs/decisiones.md, @specs/esqueleto.md y @GLOSSARY.md. Escribe specs/design.md por partes. Primero muéstrame solo el índice de secciones y espera mi aprobación […]. Contrato de la API en OpenAPI 3.1 en specs/openapi.yaml […]. Cada decisión de diseño nueva que no esté en decisiones.md debe marcarse para que yo la apruebe."
+
+**Resultado:**
+- `specs/design.md` con 17 secciones y 46 decisiones de diseño (DD-01 a DD-46), todas aprobadas. La tabla de §16 es su única fuente, y `decisiones.md` remite a ella.
+- `specs/openapi.yaml` (OpenAPI 3.1) con 15 rutas y el catálogo de problemas RFC 7807.
+- Se cerraron los siete pendientes de `requirements.md` §12 y las seis ramas que dejó el interrogatorio. Queda abierto a propósito solo el `EXPLAIN ANALYZE` (§8.5), que depende del seed.
+
+**Precisiones que hice a las propuestas de la IA:**
+
+| DD | Precisión |
+|---|---|
+| DD-05 | Las migraciones son clases de TypeORM que implementan `MigrationInterface`, escritas a mano. El script propio solo las ejecuta con `dataSource.runMigrations()`, para cumplir "las migraciones se escriben con TypeORM". Documentar por qué no se usa el CLI (ESM) |
+| DD-18 | Toda función `SECURITY DEFINER` fija su `search_path`, para que no se pueda suplantar un objeto desde otro esquema. Pruebas de integración que intentan violar DD-17 y DD-18 (clasificación incorrecta, `UPDATE` directo al saldo, `DELETE` en asientos o auditoría) y verifican que la base las rechaza |
+| DD-20 | El seed incluye al menos una cuenta con decenas de miles de movimientos, para que el `EXPLAIN ANALYZE` del historial de una cuenta sea representativo, además del total de 100,000 o más |
+| DD-23 | Documentar que el `409` del correo duplicado revela si un correo existe: es una concesión consciente, mitigada por el rate limit del registro, y la verificación por correo va en "qué haría con más tiempo" |
+| DD-25 | En modo simulado, web y móvil guardan `codigoSimulado` junto con el intento, para que una recarga en la pantalla del código no deje al usuario sin poder confirmar. En producción el campo no existe y no se guarda nada |
+| DD-32 | El intento guardado registra su fase (creación o confirmación). Si la red se pierde al confirmar, se reintenta la confirmación y no la creación. Un `202` recibido por reintento o reanudación se contrasta con `GET /transferencias/{id}` antes de pedir el código. Esto precisa D-16 y D-17 |
+| DD-37 | La consulta dinámica solo concatena fragmentos fijos de SQL; todos los valores van como parámetros, nunca dentro del texto |
+| DD-39 | El logger oculta los headers `authorization`, `cookie` y `set-cookie`, y la prueba de fugas verifica que ningún token aparezca en la salida |
+| DD-41 | Para `docs/aws-deploy.md`: detrás del balanceador, `trust proxy` con el número exacto de saltos, para obtener la IP real sin permitir que se falsifique con `X-Forwarded-For` |
+| DD-43 | Al terminar una transferencia, aplicada o rechazada, se invalidan las consultas de TanStack Query de cuentas y movimientos |
+| DD-44 | `FLAG_SECURE` se controla con una variable de configuración: activo en producción y desactivable en desarrollo, porque bloquea la grabación de pantalla que exige el video. La capa opaca de `AppState` queda siempre activa |
+| R-5.4 | El ejemplo del requisito ("los dos asientos de un traspaso en el borde de una página") no puede darse en el historial de una cuenta, porque esos asientos caen en cuentas distintas. Corregí `requirements.md` con el caso real: varios movimientos con el mismo instante en una cuenta |
+
+**Hallazgos de la IA:**
+- **DD-13, hueco en D-09:** el catálogo de tipos de movimiento no tenía tipo para el cargo en la cuenta Fondeo de cada depósito, y el `CHECK` de signo lo exige. Se agregó `FONDEO_SALIDA`, con una nota en D-09 y una entrada en `GLOSSARY.md`.
+- **DD-36, un movimiento podía desaparecer del historial:** la IA detectó un defecto en su propia propuesta anterior, DD-07, ya aprobada. Con el instante tomado de `now()` (inicio de la transacción), una transferencia que empezó antes pero confirmó después podía quedar con un `creado_en` anterior al cursor que el cliente ya había recorrido, y la paginación se la saltaba (R-5.4). Se resolvió leyendo el instante con `clock_timestamp()` después de bloquear las cuentas, y se agregó una prueba de paginación con escrituras concurrentes.
+- **`SUM` devuelve decimal:** en PostgreSQL, `SUM` sobre `bigint` devuelve `numeric`, que el driver entrega como texto y es fácil convertir con pérdida. Todas las sumas se convierten a `::bigint`, y un parser global del driver rechaza cualquier valor que no sea un entero seguro (§2.3).
+- **Conflicto de `codigoSimulado`:** R-4.14 exige que la repetición con la misma llave devuelva el mismo cuerpo, pero R-6.16 prohíbe guardar el código en claro, así que la repetición de un `202` no puede reproducir `codigoSimulado`. Se resolvió con DD-25: es la única excepción a R-4.14, solo en modo simulado, y los clientes guardan el código junto con el intento.
+
+**Commits relacionados:** `e27ebc0` (bloque A), `eabb380` (B), `1d7b905` (C), `04ec98a` (D), `a33fd8c` (E) y `f0979e9` (F).
+
+---
+
 ## Propuestas inseguras o incorrectas con el dinero
 
 Registro específico de lo que la IA propuso y era riesgoso para la integridad del dinero.
