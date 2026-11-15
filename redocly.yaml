@@ -1,3 +1,9 @@
 # Reglas de `redocly lint` para specs/openapi.yaml (DD-27, RNF-28).
 extends:
   - recommended
+
+rules:
+  # Prueba técnica sin licencia pública: `info.license` no tiene `url` ni `identifier`.
+  info-license-strict: off
+  # Según el enunciado, todo corre en local: los `servers` apuntan a localhost a propósito.
+  no-server-example.com: off
