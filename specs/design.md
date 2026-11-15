@@ -1088,9 +1088,9 @@ Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
 
 **Tipos desde el contrato (RNF-18)**
 
-1. `npm run gen:tipos` ejecuta `openapi-typescript specs/openapi.yaml -o packages/shared/src/api/openapi.ts`.
+1. `npm run gen:tipos` ejecuta `openapi-typescript specs/openapi.yaml -o packages/shared/src/api/openapi.ts --root-types --root-types-no-schema-prefix`.
 2. El archivo generado **se versiona**. En CI, un paso lo regenera y falla si `git diff --exit-code` encuentra diferencias: el contrato y los tipos nunca se desincronizan.
-3. `shared` reexporta alias legibles: `type Cuenta = components['schemas']['Cuenta']`, `type Comprobante = …`.
+3. Con `--root-types --root-types-no-schema-prefix`, el generador emite un alias legible por esquema (`type Cuenta = components['schemas']['Cuenta']`, `type Comprobante = …`), sin escribirlos a mano, y `shared` los reexporta. Las respuestas, los parámetros y los headers llevan prefijo (`ResponseNoAutenticado`, `ParameterCuentaId`, `HeaderRetryAfter`).
 4. La API tipa las respuestas de sus controladores con esos alias, y web y móvil tipan su cliente `fetch` con `paths`.
 
 **Esquemas Zod y contrato.** Los esquemas Zod de entrada viven en `shared/src/esquemas` y se escriben a mano, porque llevan refinamientos que JSON Schema no expresa (dígito verificador de la CLABE, `montoTextoACentavos`). Para que no se desvíen del contrato:
