@@ -2117,6 +2117,15 @@ Sin dependencias de React, de Node ni de Expo. Lo usan la API, la web y la app m
 4. Concatena parte entera y fracción en un solo texto de dígitos (`"0" + "10"` → `"010"`) y lo convierte con `Number`. Es un entero exacto, porque el tope cabe en `Number.MAX_SAFE_INTEGER`.
 5. Rechaza `0` y cualquier valor mayor que `TOPE_CENTAVOS` (`100000000000`).
 
+Textos de `error`, que web y móvil muestran tal cual:
+
+| Caso | `error` |
+|---|---|
+| No cumple el formato del paso 2 (signo, exponente, comas mal agrupadas, vacío) | `"Monto inválido"` |
+| Más de 2 decimales | `"Máximo 2 decimales"` |
+| Cero | `"El monto debe ser mayor que cero"` |
+| Mayor que `TOPE_CENTAVOS` | `"El monto supera el tope"` |
+
 Casos de prueba: los de R-4.33, y además `"1.005"` → error, `"00.50"` → `50`, `"1,000.5"` → `100050`, `"$1,000,000.00"` → `100000000` y `"1000000000.01"` → error por tope.
 
 **`formatearMXN(centavos)`** (D-18):
