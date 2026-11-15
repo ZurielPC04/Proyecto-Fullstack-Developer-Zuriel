@@ -1127,7 +1127,7 @@ Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
 
 **Hash.** argon2id con `memoryCost = 19456` KiB (19 MiB), `timeCost = 2` y `parallelism = 1`, el mínimo que recomienda OWASP para argon2id. El hash en formato PHC (`$argon2id$v=19$m=19456,t=2,p=1$…`) lleva sus parámetros, así que se pueden subir en el futuro sin romper los hashes existentes.
 
-**Login sin revelar el correo (R-1.7).** Si el correo no existe, la API verifica igual la contraseña contra un hash ficticio calculado al arrancar con los mismos parámetros. Así, un correo inexistente y una contraseña incorrecta tardan lo mismo y responden el mismo `401`.
+**Login sin revelar el correo (R-1.7).** Si el correo no existe, la API verifica igual la contraseña contra un hash ficticio calculado al arrancar con los mismos parámetros. Así, un correo inexistente y una contraseña incorrecta tardan lo mismo y responden el mismo `401 credenciales-invalidas` (§7.2).
 
 > **DD-28 · Aprobada · Política de contraseñas y parámetros de argon2id (cierra §12.1)**
 > **Contexto:** RNF-03 pide argon2 o bcrypt, y R-1.5 pide validar la contraseña, pero no hay política.
@@ -1496,7 +1496,8 @@ X-Request-Id: 6f0c…
 |---|---|---|---|---|
 | `validation-error` | 400 | Falla un esquema Zod, el JSON está mal formado, el cuerpo pasa de 16 kB, o `desde > hasta` | `errores` | R-1.5, R-3.3, R-3.4, R-4.8, R-4.9, R-4.13, R-5.2, R-5.5, R-B1.5 |
 | `invalid-cursor` | 400 | Cursor mal formado o generado con otros filtros | — | R-5.7 |
-| `unauthorized` | 401 | Sin access válido; credenciales incorrectas; refresh inválido, vencido, revocado o reusado | — | R-1.7, R-1.9 a R-1.11 |
+| `unauthorized` | 401 | Sin access válido; refresh inválido, vencido, revocado o reusado | — | R-1.9 a R-1.11 |
+| `credenciales-invalidas` | 401 | Login con correo inexistente o contraseña incorrecta; el mismo problem en los dos casos | — | R-1.7 |
 | `not-found` | 404 | Recurso inexistente o ajeno; ruta inexistente | — | R-2.4, R-3.11, R-4.6, R-4.10, R-5.10, R-6.14, R-B1.4 |
 | `correo-ya-registrado` | 409 | Registro con un correo existente (concesión de DD-23) | — | R-1.4 |
 | `beneficiario-duplicado` | 409 | Misma CLABE o mismo alias, sin distinguir mayúsculas, entre los beneficiarios del usuario | `errores` (campo `clabe` o `alias`) | R-3.7 |
@@ -2151,6 +2152,31 @@ En la primera tarea móvil se verifica que Hermes soporte `formatToParts`. Si no
 
 Casos de prueba: una CLABE cuya suma ponderada termina en 0 (dígito `0`, no `10`), la CLABE de Fondeo `999000000000000001` (§3.6), textos con letras, 17 y 19 dígitos.
 
+**`instanteIso(textoPg)`** (DD-22, DD-07) convierte el texto de `timestamptz` que entrega `pg` (con `TimeZone=UTC`) al formato de la API, **operando sobre el texto** y sin pasar por `Date`. Acepta solo `AAAA-MM-DD HH:MM:SS`, con una fracción opcional de 1 a 6 dígitos (PostgreSQL quita los ceros finales y omite la fracción cuando vale cero), seguido de `+00`. Cambia el espacio por `T`, completa la fracción a 6 dígitos con ceros a la derecha y cambia `+00` por `Z`: `2026-11-14 16:05:09.12+00` → `2026-11-14T16:05:09.120000Z`. Cualquier otro texto, incluido otro desfase (`-06`, `+00:00`), lanza un error.
+
+**`mensajeDeProblema(type)`** (R-4.12, DD-23) devuelve el texto en español que web y móvil muestran para cada `type` de §7.2. Los textos no llevan números variables: la pantalla muestra aparte extensiones como `intentosRestantes`. Recibe cualquier texto porque el `type` llega de la red; un `type` fuera del catálogo devuelve el texto de `internal-error`. `TIPOS_PROBLEMA` es la lista del catálogo, igual al `enum` `TipoProblema` de `openapi.yaml`.
+
+| `type` | HTTP | Texto |
+|---|---|---|
+| `validation-error` | 400 | Revisa los datos marcados. |
+| `invalid-cursor` | 400 | El historial cambió. Vuelve a cargarlo. |
+| `unauthorized` | 401 | Tu sesión terminó. Inicia sesión de nuevo. |
+| `credenciales-invalidas` | 401 | Correo o contraseña incorrectos. |
+| `not-found` | 404 | No encontramos lo que buscas. |
+| `correo-ya-registrado` | 409 | Ese correo ya está registrado. Inicia sesión o usa otro correo. |
+| `beneficiario-duplicado` | 409 | Ya tienes un beneficiario con esa CLABE o ese alias. |
+| `clabe-not-found` | 422 | La CLABE no corresponde a ninguna cuenta de la plataforma. |
+| `misma-cuenta` | 422 | La cuenta de origen y la de destino deben ser distintas. |
+| `idempotency-key-reused` | 422 | No pudimos procesar este envío. Inicia uno nuevo. |
+| `saldo-insuficiente` | 422 | La cuenta origen no tiene saldo suficiente para esta transferencia. |
+| `limite-diario-excedido` | 422 | La transferencia supera tu límite diario. Tu límite se renueva a medianoche. |
+| `codigo-incorrecto` | 422 | El código es incorrecto. Inténtalo de nuevo. |
+| `codigo-agotado` | 422 | Agotaste los intentos del código. La transferencia fue rechazada. |
+| `codigo-expirado` | 422 | El código expiró. La transferencia fue rechazada. |
+| `too-many-requests` | 429 | Demasiados intentos. Espera un momento y vuelve a intentarlo. |
+| `retryable` | 503 | El servicio está ocupado. Inténtalo de nuevo en unos segundos. |
+| `internal-error` | 500 | Ocurrió un error inesperado. Inténtalo más tarde. |
+
 **Reglas de lint en `web`, `mobile` y `shared`** (RNF-09, D-18):
 
 | Regla | Prohíbe |
@@ -2184,7 +2210,7 @@ Si una regla da un falso positivo fuera del camino del dinero, se desactiva en e
 
 - El access vive en una variable de módulo de `auth/`, nunca en `localStorage` ni en `sessionStorage`.
 - Al cargar la app, una ruta protegida espera a `POST /auth/refresh` antes de pintar datos (R-1.14).
-- El cliente `fetch` agrega `Authorization`. Ante un `401`, refresca **una vez** y repite la petición original **una vez**. Repetir es seguro: un `POST /transferencias` lleva la misma llave.
+- El cliente `fetch` agrega `Authorization`. Ante un `401 unauthorized`, refresca **una vez** y repite la petición original **una vez**. Repetir es seguro: un `POST /transferencias` lleva la misma llave. Un `401 credenciales-invalidas` del login no dispara el refresh: se muestra su texto en el formulario.
 - El refresh corre dentro de `navigator.locks.request('billetera-refresh', …)`. Dentro del lock, la pestaña vuelve a revisar si otra ya obtuvo un access válido mientras esperaba; si es así, no rota (R-1.15).
 - Cerrar sesión llama a `POST /auth/logout`, borra el access en memoria y el intento de `sessionStorage`, y limpia la caché de TanStack Query (R-1.12).
 
