@@ -2107,7 +2107,7 @@ Sin dependencias de React, de Node ni de Expo. Lo usan la API, la web y la app m
 | `clabe` | `digitoVerificador`, `validarClabe` | R-3.2 a R-3.4, R-3.10, D-19 |
 | `tiempo` | `ZONA_HORARIA`, `instanteIso` (DD-22) | D-15 |
 | `esquemas` | Esquemas Zod de entrada: registro, login, refresh, beneficiario, transferencia (con `destino` discriminado, DD-26), confirmación, filtros del historial, mes; y `normalizarTexto` (`trim` + NFC) | RNF-01, RNF-18 |
-| `problemas` | `TipoProblema` y `mensajeDeProblema(type)`: los textos en español que muestran web y móvil | R-4.12 |
+| `problemas` | `TIPOS_PROBLEMA` y `mensajeDeProblema(type)`: los textos en español que muestran web y móvil. El tipo `TipoProblema` no se define aquí: viene de los tipos generados del contrato (`api`) | R-4.12 |
 | `api` | Tipos generados de `openapi.yaml` y sus alias (§4.3) | RNF-18 |
 
 **`montoTextoACentavos(texto)`** devuelve `{ ok: true, centavos }` o `{ ok: false, error }`. Trabaja **sobre el texto**, sin multiplicar ni redondear (D-18):
@@ -2154,7 +2154,7 @@ Casos de prueba: una CLABE cuya suma ponderada termina en 0 (dígito `0`, no `10
 
 **`instanteIso(textoPg)`** (DD-22, DD-07) convierte el texto de `timestamptz` que entrega `pg` (con `TimeZone=UTC`) al formato de la API, **operando sobre el texto** y sin pasar por `Date`. Acepta solo `AAAA-MM-DD HH:MM:SS`, con una fracción opcional de 1 a 6 dígitos (PostgreSQL quita los ceros finales y omite la fracción cuando vale cero), seguido de `+00`. Cambia el espacio por `T`, completa la fracción a 6 dígitos con ceros a la derecha y cambia `+00` por `Z`: `2026-11-14 16:05:09.12+00` → `2026-11-14T16:05:09.120000Z`. Cualquier otro texto, incluido otro desfase (`-06`, `+00:00`), lanza un error.
 
-**`mensajeDeProblema(type)`** (R-4.12, DD-23) devuelve el texto en español que web y móvil muestran para cada `type` de §7.2. Los textos no llevan números variables: la pantalla muestra aparte extensiones como `intentosRestantes`. Recibe cualquier texto porque el `type` llega de la red; un `type` fuera del catálogo devuelve el texto de `internal-error`. `TIPOS_PROBLEMA` es la lista del catálogo, igual al `enum` `TipoProblema` de `openapi.yaml`.
+**`mensajeDeProblema(type)`** (R-4.12, DD-23) devuelve el texto en español que web y móvil muestran para cada `type` de §7.2. Los textos no llevan números variables: la pantalla muestra aparte extensiones como `intentosRestantes`. Recibe cualquier texto porque el `type` llega de la red; un `type` fuera del catálogo devuelve el texto de `internal-error`. `TipoProblema` es el tipo generado desde el `enum` de `openapi.yaml` (§4.3), que es la única fuente del catálogo. `TIPOS_PROBLEMA` es la misma lista disponible en tiempo de ejecución, declarada con `satisfies readonly TipoProblema[]`, y una prueba de tipos (`expectTypeOf(...).toEqualTypeOf<TipoProblema>()`) exige que sean exactamente el mismo conjunto.
 
 | `type` | HTTP | Texto |
 |---|---|---|

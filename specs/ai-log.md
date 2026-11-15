@@ -325,7 +325,11 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Pruebas de mutación:** al quitar un `type` de `TIPOS_PROBLEMA`, el typecheck falló. Al renombrar `saldoCentavos` en `openapi.yaml` y regenerar, `git diff --exit-code` salió con 1. En los dos casos se restauró el archivo.
 
-**Commits relacionados:** el de T-SHR-06. "CI en verde" se confirma después del push.
+**Seguimiento (revisión mía después del commit):**
+- **Warnings de Redocly:** `info-license-strict` y `no-server-example.com` se apagan en `redocly.yaml`, con su motivo: prueba técnica sin licencia pública, y todo corre en local según el enunciado. `operation-4xx-response` **no** se apaga: `.redocly.lint-ignore.yaml` la ignora solo en `GET /health`, porque un health check no tiene errores del cliente. Una mutación (`POST /auth/login` sin respuestas 4xx) confirmó que la regla sigue activa en el resto del contrato. `redocly lint` queda sin errores ni warnings.
+- **Corrección a la IA:** el commit de T-SHR-06 cambió el origen de `TipoProblema` (ahora viene de los tipos generados), pero no actualizó `design.md` §13.1, que seguía presentándolo como algo que define el módulo `problemas`. Se corrigió en un commit `docs(specs)`. También se confirmó que la prueba usa `toEqualTypeOf` (igualdad exacta), no `toMatchTypeOf`.
+
+**Commits relacionados:** el de T-SHR-06, `aed76b8` y `f0cbb9a` (Redocly) y el de §13.1. "CI en verde" se confirma después del push.
 
 ---
 
