@@ -225,6 +225,16 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `fbd41b3` (`tasks.md`) y el commit que agrega esta entrada.
 
+### Sesión 6 — 2026-11-14 · Implementación de T-API-01 (PostgreSQL en Docker)
+
+**Herramienta:** Claude Code (Opus 5.5), flujo plan-first: la IA mostró el plan de archivos y comandos, y lo aprobé antes de que escribiera.
+
+**Hueco que descubrió la tarea:** al correr `npm run db:up`, Docker no pudo publicar el puerto `5432` porque ya lo ocupaba un PostgreSQL instalado en mi máquina. `design.md` §1.3 fijaba `5432` en el host. La IA no detuvo el servicio local y me preguntó cómo resolverlo, con tres opciones: detener el PostgreSQL local, cambiar a `5433` o hacer el puerto configurable.
+
+**Decisión:** combiné las dos últimas. El puerto del host se toma de `${POSTGRES_PORT:-5433}`: por defecto `5433`, para no chocar con un PostgreSQL local (común en Windows), y configurable si `5433` también está ocupado. Dentro del contenedor y en CI sigue en `5432`. Siguiendo la regla de `CLAUDE.md`, primero se corrigió `design.md` §1.3 en su propio commit y después se cerró T-API-01, con el README indicando cómo cambiar el puerto.
+
+**Commits relacionados:** el commit que corrige §1.3 y agrega esta entrada, y el de T-API-01.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

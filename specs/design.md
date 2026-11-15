@@ -177,10 +177,12 @@ billetera/
 
 | Servicio | Cómo corre | Puerto |
 |---|---|---|
-| PostgreSQL 17 | `docker compose` | `5432` |
+| PostgreSQL 17 | `docker compose` | `5433` en el host (configurable), `5432` dentro del contenedor |
 | API | `tsx watch` en el host | `3000`, rutas bajo `/api` |
 | Web | Vite en el host; proxy de `/api` a `:3000` (D-06) | `5173` |
 | Móvil | `expo start` | Metro en `8081` |
+
+**Puerto de PostgreSQL en el host.** `docker-compose.yml` publica el contenedor en `127.0.0.1:${POSTGRES_PORT:-5433}`. El valor por defecto es `5433` y no `5432` para no chocar con un PostgreSQL instalado en la máquina, algo común en Windows. Si `5433` también está ocupado, se cambia con `POSTGRES_PORT`, en el entorno del shell o en un `.env` de la raíz (Compose lo lee solo y git lo ignora), y se ajustan las URL de `api/.env`. Dentro del contenedor y en el *service container* de CI, PostgreSQL sigue en `5432`.
 
 `docker/postgres/init.sql` se ejecuta una sola vez al crear el volumen. Crea las bases `billetera` y `billetera_test` y los roles de §3.4.
 
