@@ -309,6 +309,24 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `a7762e4` (`credenciales-invalidas`, textos de problemas e `instanteIso` en §13.1) y el de T-SHR-05.
 
+### Sesión 12 — 2026-11-15 · Implementación de T-SHR-06 (tipos generados desde `openapi.yaml`)
+
+**Herramienta:** Claude Code (Opus 5.5). La IA mostró el plan y lo aprobé antes de instalar nada.
+
+**Qué propuso la IA y qué decidí:**
+
+| Propuesta | Decisión | Motivo |
+|---|---|---|
+| Versiones exactas: `openapi-typescript@7.13.0` y `@redocly/cli@2.72.1`, en lugar de la 2.78.0, publicada 3 días antes | Aceptada | Evitar versiones recién publicadas (cadena de suministro). Con versión exacta, el paso `git diff --exit-code` depende de un generador fijo |
+| Alias con `--root-types --root-types-no-schema-prefix` en lugar de escribirlos a mano | Aceptada | El generador emite un alias por esquema (`Cuenta`, `Comprobante`, `Movimiento`, …), así que no pueden desincronizarse del contrato |
+| El tipo `TipoProblema` generado chocaba con el que exportaba `problemas.ts` (T-SHR-05) | `problemas.ts` usa el tipo generado; `TIPOS_PROBLEMA` lleva `satisfies readonly TipoProblema[]` | Una sola fuente del tipo. La prueba que leía el YAML con `?raw` y una regex se cambió por `expectTypeOf`, que verifica el compilador |
+
+**Primera corrida de `redocly lint`:** 0 errores, así que no hubo commit de correcciones. Hubo 4 warnings, que quedan pendientes de decisión: `info-license-strict` (licencia privada sin `url`), dos `no-server-example.com` (los `servers` apuntan a `localhost`, que es intencional para desarrollo local) y `operation-4xx-response` en `GET /health`.
+
+**Pruebas de mutación:** al quitar un `type` de `TIPOS_PROBLEMA`, el typecheck falló. Al renombrar `saldoCentavos` en `openapi.yaml` y regenerar, `git diff --exit-code` salió con 1. En los dos casos se restauró el archivo.
+
+**Commits relacionados:** el de T-SHR-06. "CI en verde" se confirma después del push.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

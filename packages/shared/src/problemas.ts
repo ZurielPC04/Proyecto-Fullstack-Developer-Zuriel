@@ -1,7 +1,8 @@
 // Catálogo de problemas (DD-23, design.md §7.2 y §13.1): textos en español que
 // muestran web y móvil. Los clientes deciden por `type`, nunca por `detail`.
+import type { TipoProblema } from './api/openapi.js';
 
-/** design.md §7.2: igual al enum `TipoProblema` de openapi.yaml. */
+/** design.md §7.2: el enum `TipoProblema` de openapi.yaml, disponible en tiempo de ejecución. */
 export const TIPOS_PROBLEMA = [
   'validation-error',
   'unauthorized',
@@ -21,9 +22,7 @@ export const TIPOS_PROBLEMA = [
   'too-many-requests',
   'retryable',
   'internal-error',
-] as const;
-
-export type TipoProblema = (typeof TIPOS_PROBLEMA)[number];
+] as const satisfies readonly TipoProblema[];
 
 // `Record<TipoProblema, string>` hace que el compilador exija un texto por cada `type`.
 const MENSAJES: Record<TipoProblema, string> = {

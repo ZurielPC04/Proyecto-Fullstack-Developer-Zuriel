@@ -10,7 +10,14 @@ const SIN_REDONDEO =
 
 export default defineConfig(
   // eslint-pruebas/ contiene a propósito código prohibido; lo revisa `npm run lint:verificar-reglas`.
-  globalIgnores(['**/dist/', '**/node_modules/', '**/coverage/', 'eslint-pruebas/']),
+  // packages/shared/src/api/openapi.ts lo genera `npm run gen:tipos` (design.md §4.3).
+  globalIgnores([
+    '**/dist/',
+    '**/node_modules/',
+    '**/coverage/',
+    'eslint-pruebas/',
+    'packages/shared/src/api/openapi.ts',
+  ]),
   js.configs.recommended,
   tseslint.configs.recommended,
   {

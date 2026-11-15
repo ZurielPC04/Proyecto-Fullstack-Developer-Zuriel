@@ -19,6 +19,8 @@
     "predev": "npm run build:shared",
     "lint": "eslint .",
     "lint:verificar-reglas": "node scripts/verificar-reglas-lint.mjs",
+    "lint:contrato": "redocly lint specs/openapi.yaml",
+    "gen:tipos": "openapi-typescript specs/openapi.yaml -o packages/shared/src/api/openapi.ts --root-types --root-types-no-schema-prefix",
     "pretypecheck": "npm run build:shared",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "pretest": "npm run build:shared",
@@ -29,8 +31,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@redocly/cli": "2.72.1",
     "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
+    "openapi-typescript": "7.13.0",
     "prettier": "^3.10.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.2"

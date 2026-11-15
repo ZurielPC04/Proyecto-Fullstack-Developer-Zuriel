@@ -1,0 +1,3 @@
+# Reglas de `redocly lint` para specs/openapi.yaml (DD-27, RNF-28).
+extends:
+  - recommended

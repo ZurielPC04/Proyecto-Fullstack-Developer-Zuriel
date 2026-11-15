@@ -33,6 +33,12 @@ jobs:
       - name: Verificar reglas de lint del dinero (DD-42)
         run: npm run lint:verificar-reglas
       - run: npm run typecheck
+      - name: Validar el contrato (DD-27)
+        run: npm run lint:contrato
+      - name: Tipos generados al día con openapi.yaml (DD-27)
+        run: |
+          npm run gen:tipos
+          git diff --exit-code -- packages/shared/src/api/openapi.ts
 
   unitarias:
     name: unitarias

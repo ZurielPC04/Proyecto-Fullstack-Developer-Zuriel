@@ -6,3 +6,5 @@ specs/
 docs/
 .claude/
 *.md
+# Generado por `npm run gen:tipos` (design.md §4.3); CI compara con git diff.
+packages/shared/src/api/openapi.ts
