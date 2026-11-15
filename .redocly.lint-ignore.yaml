@@ -1,0 +1,6 @@
+# Excepciones puntuales de `redocly lint` (DD-27). Las reglas siguen activas para el
+# resto del contrato; aquí solo se ignoran ubicaciones concretas, con su motivo.
+specs/openapi.yaml:
+  operation-4xx-response:
+    # Un health check no tiene errores del cliente: solo responde 200 o 503.
+    - '#/paths/~1health/get/responses'
