@@ -433,7 +433,7 @@ flowchart LR
 - **Implementa:** DD-24, DD-29 (HS256), DD-30 (vencimiento absoluto de la familia)
 - **Alcance** (§5.2 a §5.4, §12.2): `POST /api/auth/login` con `cliente: web | movil`, `refresh` y `logout`; middleware `autenticar` con `Cache-Control: no-store`; cookie `billetera_refresh` `HttpOnly; Secure; SameSite=Strict; Path=/api/auth`; `X-Requested-With` obligatorio con cookie; reúso → revoca la familia y audita `refresh-reuse-detected`.
 - **Verificación:** `-t "R-1.6|R-1.7|R-1.8|R-1.9|R-1.10|R-1.11|R-1.12|R-1.13|R-1.16"`:
-  - mismo `401` para correo inexistente y contraseña incorrecta;
+  - login fallido responde `401 credenciales-invalidas` (no `unauthorized`), con el mismo problem para correo inexistente y contraseña incorrecta;
   - rotación;
   - reúso que revoca la familia y audita;
   - familia vencida;
