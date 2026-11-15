@@ -230,11 +230,11 @@ flowchart LR
 ### T-SHR-04 · Reglas de lint del dinero · `shared` · P1
 
 - **Depende de:** T-SHR-01
-- **Criterios:** RNF-09, R-4.35
-- **Implementa:** DD-42 (la regla de `AsyncStorage` se activa en T-MOB-01)
-- **Alcance** (§13.1): en `eslint.config.js`, para `packages/shared`, `web` y `mobile`, prohibir `parseFloat`, `Number.parseFloat`, `Math.round`, `Math.floor`, `Math.ceil`, `x / 100` y `.toFixed(...)`.
-- **Verificación:** un archivo de prueba (`eslint-pruebas/dinero.invalido.ts`, excluido de la compilación) con cada patrón prohibido; un script `npm run lint:verificar-reglas` corre ESLint sobre él y falla si **no** reporta cada regla. `npm run lint` sigue en verde sobre el código real.
-- **Commit:** `chore(shared): T-SHR-04 lint contra redondeo de montos [RNF-09]`
+- **Criterios:** RNF-09, R-4.35, RNF-20
+- **Implementa:** DD-42 (incluida la regla de `AsyncStorage`, activa desde antes de que exista `mobile/`)
+- **Alcance** (§13.1): en `eslint.config.js`, para `packages/shared`, `web` y `mobile`, prohibir `parseFloat`, `Number.parseFloat`, `Math.round`, `Math.floor`, `Math.ceil`, `x / 100` y `.toFixed(...)`; solo para `mobile`, prohibir importar `@react-native-async-storage/async-storage`.
+- **Verificación:** archivos de prueba (`eslint-pruebas/dinero.invalido.ts` y `eslint-pruebas/almacenamiento.invalido.ts`, excluidos de la compilación y de `npm run lint`) con cada patrón prohibido; un script `npm run lint:verificar-reglas` los revisa con ESLint como si vivieran en `packages/shared`, `web` y `mobile`, y falla si **no** reporta cada regla en las rutas donde aplica. `npm run lint` sigue en verde sobre el código real.
+- **Commit:** `chore(shared): T-SHR-04 lint contra redondeo de montos [RNF-09, RNF-20]`
 
 ### T-SHR-05 · Módulos `tiempo` y `problemas` · `shared` · P1
 
@@ -715,16 +715,16 @@ flowchart LR
 
 - **Depende de:** T-SHR-07
 - **Criterios:** R-2.5 (verificación en Hermes), RNF-20 (lint), RNF-32
-- **Implementa:** DD-03, DD-42 (regla de `AsyncStorage`), D-18 (Hermes)
+- **Implementa:** DD-03, D-18 (Hermes); hereda la regla de `AsyncStorage` de DD-42, activada en T-SHR-04
 - **Alcance** (§1.3, §13.3):
   - App Expo con TypeScript, React Navigation (native stack) y `jest-expo`, consumiendo `shared` compilado; misma versión exacta de React que la web (DD-01).
   - **La URL de la API se lee de `EXPO_PUBLIC_API_URL`.** `mobile/.env.example` trae `EXPO_PUBLIC_API_URL=http://<IP-de-la-LAN>:3000/api` y `EXPO_PUBLIC_BLOQUEAR_CAPTURAS=false`. Con Expo Go en un teléfono físico, el valor debe ser **la IP de la computadora en la red local** (por ejemplo `http://192.168.1.50:3000/api`), nunca `localhost` ni `127.0.0.1`, que en el teléfono apuntan al propio teléfono. Si la variable falta, la app muestra un error de configuración en lugar de intentar `localhost`.
   - La API escucha en todas las interfaces (`0.0.0.0`) para aceptar conexiones de la red local.
-  - Regla de lint que prohíbe importar `@react-native-async-storage/async-storage`.
+  - La regla de lint que prohíbe importar `@react-native-async-storage/async-storage` ya existe desde T-SHR-04; aquí solo se comprueba que aplica al código real de `mobile/`.
   - Verificar que Hermes soporta `Intl.NumberFormat.prototype.formatToParts`; si no, implementar el formateo manual de miles de D-18 con los mismos casos.
 - **Verificación:**
   - `npm test -w mobile`: `formatearMXN` da los resultados de R-2.5 bajo `jest-expo`; la configuración rechaza una URL ausente.
-  - La prueba de lint de `AsyncStorage` falla como se espera.
+  - `npm run lint:verificar-reglas` sigue en verde y `npm run lint` pasa sobre el código real de `mobile/`.
   - **Prueba manual:** con `npm run mobile`, Expo Go en un teléfono de la misma red y `EXPO_PUBLIC_API_URL` con la IP de la LAN, la app muestra el resultado de `GET /api/health`. Se repite con `localhost` para confirmar que **falla** en el teléfono. Si Windows bloquea la conexión, se abre el puerto 3000 en el firewall para redes privadas (se documenta en T-DOC-02).
 - **Commit:** `feat(mobile): T-MOB-01 esqueleto Expo con URL de API por EXPO_PUBLIC_API_URL [RNF-32, RNF-20]`
 
@@ -1058,7 +1058,7 @@ Cada criterio de `requirements.md` aparece en al menos una tarea. Las tareas en 
 | RNF-17 | T-WEB-01 a T-WEB-05, T-MOB-03 |
 | RNF-18 | T-SHR-01, T-SHR-06, T-SHR-07, T-WEB-05 |
 | RNF-19 | T-WEB-01, T-WEB-09 |
-| RNF-20 | T-MOB-01, T-MOB-02 |
+| RNF-20 | T-SHR-04, T-MOB-01, T-MOB-02 |
 | RNF-21 | T-MOB-06 |
 | RNF-22 | T-SHR-02, T-SHR-03 |
 | RNF-23 | T-API-09, T-CI-02, T-API-10 |
