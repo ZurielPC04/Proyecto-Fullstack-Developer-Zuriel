@@ -196,7 +196,7 @@ flowchart LR
 - **Criterios:** RNF-29
 - **Implementa:** DD-46 (parcial: primeros dos jobs)
 - **Alcance** (§14.5): `.github/workflows/ci.yml` con Node 24 y caché de npm, en cada `push` y pull request a `main`.
-  - `calidad`: `npm ci`, compilar `shared`, `npm run lint`, `npm run typecheck`.
+  - `calidad`: `npm ci`, compilar `shared`, `npm run lint`, `npm run lint:verificar-reglas` (agregado después de T-SHR-04, RNF-09), `npm run typecheck`.
   - `unitarias`: `npm test`.
   - Los pasos de `redocly lint` y del diff de tipos se agregan en T-SHR-06; `integracion` en T-CI-02; `movil` en T-CI-03.
 - **Verificación:** el workflow corre en verde en `main` después del push.

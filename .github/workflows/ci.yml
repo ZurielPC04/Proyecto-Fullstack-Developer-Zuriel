@@ -30,6 +30,8 @@ jobs:
       - name: Compilar shared
         run: npm run build:shared
       - run: npm run lint
+      - name: Verificar reglas de lint del dinero (DD-42)
+        run: npm run lint:verificar-reglas
       - run: npm run typecheck
 
   unitarias:
