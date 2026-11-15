@@ -245,6 +245,16 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `ad6e213` (workflow) y el commit que marca la casilla y agrega esta entrada.
 
+### Sesión 8 — 2026-11-15 · Implementación de T-SHR-02 (módulo `dinero`)
+
+**Herramienta:** Claude Code (Opus 5.5), skill `tdd`. Antes de escribir pruebas, la IA propuso los seams y los confirmé: `montoTextoACentavos`, `formatearMXN`, `centavosATextoDecimal` (importados desde `src/dinero.ts`) y el re-export desde `@billetera/shared`. Ciclos rojo → verde de uno en uno, con los valores esperados tomados de las tablas de R-2.5, R-4.33 y §13.1, no recalculados.
+
+**Hueco que descubrió la tarea:** `design.md` §13.1 y R-4.34 solo fijaban el texto `"Máximo 2 decimales"`; el resto de los rechazos (formato inválido, cero, tope) no tenían texto. Se agregó a §13.1 una tabla con los cuatro textos de `error` en su propio commit, y las pruebas comparan el texto exacto.
+
+**Detalle encontrado en el ciclo rojo:** `formatearMXN(-250)` pasaba "por accidente" porque `Intl` pone el signo en los pesos (`-2`), pero `-5` daba `$0.-5`. Se separa el signo antes de completar con ceros, como dice §13.1 paso 1. Los pesos se pasan a `Intl` como `BigInt`, así que ningún monto toca un float.
+
+**Commits relacionados:** `b8775ab` (textos de error en §13.1) y el de T-SHR-02.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
