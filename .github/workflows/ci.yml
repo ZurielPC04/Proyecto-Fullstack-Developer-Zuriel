@@ -1,0 +1,45 @@
+# CI de la billetera (design.md §14.5, RNF-29).
+# T-CI-01: jobs calidad y unitarias. Los pasos de redocly y del diff de
+# tipos llegan en T-SHR-06; integracion en T-CI-02; movil en T-CI-03.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  calidad:
+    name: calidad
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Compilar shared
+        run: npm run build:shared
+      - run: npm run lint
+      - run: npm run typecheck
+
+  unitarias:
+    name: unitarias
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm test
