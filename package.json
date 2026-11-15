@@ -18,6 +18,7 @@
     "build": "npm run build --workspaces --if-present",
     "predev": "npm run build:shared",
     "lint": "eslint .",
+    "lint:verificar-reglas": "node scripts/verificar-reglas-lint.mjs",
     "pretypecheck": "npm run build:shared",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "pretest": "npm run build:shared",

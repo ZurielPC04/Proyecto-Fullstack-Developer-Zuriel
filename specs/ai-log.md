@@ -267,6 +267,23 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `05447ee` (resultado y textos de error en §13.1) y el de T-SHR-03.
 
+### Sesión 10 — 2026-11-15 · Implementación de T-SHR-04 (reglas de lint del dinero)
+
+**Herramienta:** Claude Code (Opus 5.5). La IA presentó el plan antes de tocar archivos y señaló dos diferencias entre mi pedido y `tasks.md`; decidí en ambas.
+
+**Qué propuso la IA y qué decidí:**
+
+| Propuesta | Decisión | Motivo |
+|---|---|---|
+| Yo pedí un archivo de prueba temporal que se borrara; `tasks.md` pedía uno permanente con `npm run lint:verificar-reglas` | Archivo permanente y script, como dice `tasks.md` | Queda como prueba de regresión. Aun así, se demostró una vez que `npm run lint` rechaza cada patrón copiando temporalmente los archivos a `packages/shared/src/` y `mobile/src/` |
+| `tasks.md` dejaba la regla de `AsyncStorage` para T-MOB-01; yo pedí probarla ya | Activarla en T-SHR-04, aunque `mobile/` aún no exista; corregí `tasks.md` en su propio commit | La protección de RNF-20 existe antes de la primera línea de código móvil |
+
+**Cómo se verifica:** el script revisa `eslint-pruebas/` con `ESLint.lintText` y un `filePath` virtual en cada ruta. Así comprueba también los globs: las reglas de dinero aplican en `shared`, `web` y `mobile`, no en `api` (fuera del alcance de DD-42), y `AsyncStorage` solo en `mobile`. Incluye casos que no deben reportarse (`x / 2`, `x % 100`, `Math.abs`). Al quitar temporalmente la regla de `Math.ceil`, el script falló en las tres rutas y salió con código 1.
+
+**Corrección a la IA:** la primera verificación de `npm run lint` se dio por buena leyendo el `$?` de un `tail` en la tubería. En realidad el lint estaba en rojo: el script nuevo usaba `console` y `process` sin globales de Node declarados. Se agregó un bloque para `scripts/**` con esos dos globales, sin instalar `globals`, y se volvió a correr leyendo el código de salida de ESLint.
+
+**Commits relacionados:** `84e21a8` (la regla de `AsyncStorage` se activa en T-SHR-04) y el de T-SHR-04.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
