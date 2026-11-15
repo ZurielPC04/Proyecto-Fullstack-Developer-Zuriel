@@ -255,6 +255,18 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `b8775ab` (textos de error en §13.1) y el de T-SHR-02.
 
+### Sesión 9 — 2026-11-15 · Implementación de T-SHR-03 (módulo `clabe`)
+
+**Herramienta:** Claude Code (Opus 5.5), skill `tdd`. Antes de escribir pruebas, la IA propuso los seams y los confirmé: `digitoVerificador` y `validarClabe` desde `src/clabe.ts`, y el re-export desde `@billetera/shared`. Ciclos rojo → verde de uno en uno, con los valores esperados calculados a mano (CLABE de ejemplo `032180000118359719`, Fondeo de §3.6), no recalculados con el algoritmo.
+
+**Hueco que descubrió la tarea:** §13.1 no definía la forma del resultado de `validarClabe` ni sus textos de error. Se agregaron en su propio commit: tres textos en el orden de R-3.2 (no numérico, longitud, dígito). Separé "solo admite números" de "debe tener 18 dígitos" para que el formulario sea más claro.
+
+**Decisión mía:** `validarClabe` es estricta y no quita espacios; el formulario los quita antes de llamarla, igual que con el monto.
+
+**Dígito 0 y no 10:** la prueba con la suma ponderada que termina en 0 (`99918040000000000`, suma 30) pasó desde el principio, porque el `% 10` final ya estaba. Para asegurar que no es una prueba vacía, se quitó temporalmente ese `% 10`: falló solo esa prueba (`expected 10 to be +0`) y luego se restauró el código.
+
+**Commits relacionados:** `05447ee` (resultado y textos de error en §13.1) y el de T-SHR-03.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

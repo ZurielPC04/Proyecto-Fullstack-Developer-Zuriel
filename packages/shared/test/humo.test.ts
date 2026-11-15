@@ -13,4 +13,13 @@ describe('paquete compartido', () => {
     expect(shared.montoTextoACentavos('1.15')).toEqual({ ok: true, centavos: 115 });
     expect(shared.TOPE_CENTAVOS).toBe(100_000_000_000);
   });
+
+  it('RNF-18 @billetera/shared exporta el módulo clabe', async () => {
+    const shared = await import('@billetera/shared');
+    expect(shared.digitoVerificador('99900000000000000')).toBe(1);
+    expect(shared.validarClabe('999000000000000001')).toEqual({
+      ok: true,
+      clabe: '999000000000000001',
+    });
+  });
 });
