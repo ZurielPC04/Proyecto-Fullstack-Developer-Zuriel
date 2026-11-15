@@ -23,7 +23,8 @@
     "pretest": "npm run build:shared",
     "test": "npm run test --workspaces --if-present",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:up": "docker compose up -d --wait"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

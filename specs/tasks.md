@@ -56,7 +56,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 **Fase 0 · Fundaciones**
 
 - [x] T-SHR-01 · `shared` · P1 · Esqueleto del monorepo
-- [ ] T-API-01 · `api` · P1 · PostgreSQL 17 en Docker con roles y base de pruebas
+- [x] T-API-01 · `api` · P1 · PostgreSQL 17 en Docker con roles y base de pruebas
 - [ ] T-CI-01 · `ci` · P1 · CI inicial: `calidad` y `unitarias`
 
 **Fase 1 · `packages/shared`**
