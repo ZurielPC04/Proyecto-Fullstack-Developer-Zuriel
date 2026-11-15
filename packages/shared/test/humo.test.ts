@@ -22,4 +22,14 @@ describe('paquete compartido', () => {
       clabe: '999000000000000001',
     });
   });
+
+  it('RNF-18 @billetera/shared exporta los módulos tiempo y problemas', async () => {
+    const shared = await import('@billetera/shared');
+    expect(shared.ZONA_HORARIA).toBe('America/Mexico_City');
+    expect(shared.instanteIso('2026-11-14 16:05:09.5+00')).toBe('2026-11-14T16:05:09.500000Z');
+    expect(shared.mensajeDeProblema('credenciales-invalidas')).toBe(
+      'Correo o contraseña incorrectos.',
+    );
+    expect(shared.TIPOS_PROBLEMA).toHaveLength(18);
+  });
 });

@@ -284,6 +284,31 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `84e21a8` (la regla de `AsyncStorage` se activa en T-SHR-04) y el de T-SHR-04.
 
+### Sesión 11 — 2026-11-15 · Implementación de T-SHR-05 (módulos `tiempo` y `problemas`)
+
+**Herramienta:** Claude Code (Opus 5.5), skill `tdd`. Seams confirmados antes de escribir pruebas: `instanteIso` y `mensajeDeProblema` desde `src/`, el re-export desde `@billetera/shared`, y que `TIPOS_PROBLEMA` coincida con el `enum` `TipoProblema` de `openapi.yaml`.
+
+**Hueco que descubrió la tarea:** ningún documento fijaba los textos que `mensajeDeProblema` muestra en web y móvil. La IA propuso una tabla y yo la corregí antes de aprobarla.
+
+**Correcciones a la IA:**
+
+| Propuesta | Problema | Corrección |
+|---|---|---|
+| El login fallido usaba `401 unauthorized`, con el texto "Tu sesión terminó. Inicia sesión de nuevo." | Quien escribe mal su contraseña vería un mensaje de sesión expirada, que confunde | Nuevo `type` `credenciales-invalidas` (`401`), con el texto "Correo o contraseña incorrectos.", igual exista o no el correo (R-1.7). `unauthorized` queda solo para sesión expirada o token inválido. Se actualizaron §5.1, §7.2, §13.2 (un `401 credenciales-invalidas` no dispara el refresh) y `openapi.yaml` |
+| `idempotency-key-reused`: "Esta llave ya se usó con datos distintos…" | El usuario no sabe qué es una llave | "No pudimos procesar este envío. Inicia uno nuevo." |
+| `limite-diario-excedido`: "La transferencia supera tu límite diario." | No dice cuándo vuelve a poder enviar | Se agrega "Tu límite se renueva a medianoche." |
+
+**Decisión mía:** un `type` fuera del catálogo muestra el texto de `internal-error`, porque el `type` llega de la red y la pantalla nunca debe quedar vacía.
+
+**Detalles encontrados:**
+- Un objeto literal como tabla de textos devuelve una función con `type = "toString"` o `"constructor"`. `mensajeDeProblema` revisa primero si el `type` pertenece al catálogo, y hay pruebas para esos casos.
+- `instanteIso` acepta solo `AAAA-MM-DD HH:MM:SS[.f{1,6}]+00` y nunca usa `Date`. Rechaza `-06`, `+00:00`, más de 6 decimales, un texto que ya está en ISO, `infinity` y el texto vacío.
+- La prueba de contrato lee `openapi.yaml` con el import `?raw` de Vite, para no agregar tipos de Node a `shared`.
+
+**Pruebas de mutación:** al quitar `credenciales-invalidas` del enum de `openapi.yaml`, la prueba de contrato falló. Al quitar un texto de `MENSAJES`, el typecheck falló (`Record<TipoProblema, string>`). En los dos casos se restauró el archivo.
+
+**Commits relacionados:** `a7762e4` (`credenciales-invalidas`, textos de problemas e `instanteIso` en §13.1) y el de T-SHR-05.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
