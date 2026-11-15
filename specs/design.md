@@ -2421,7 +2421,7 @@ El nombre de cada prueba empieza con los IDs que verifica: `it('R-4.14 repetici√
 
 | Job | Pasos |
 |---|---|
-| `calidad` | `npm ci`; compilar `shared`; `npm run lint`; `npm run typecheck`; `redocly lint specs/openapi.yaml`; `npm run gen:tipos` y `git diff --exit-code` (DD-27) |
+| `calidad` | `npm ci`; compilar `shared`; `npm run lint`; `npm run lint:verificar-reglas` (DD-42); `npm run typecheck`; `redocly lint specs/openapi.yaml`; `npm run gen:tipos` y `git diff --exit-code` (DD-27) |
 | `unitarias` | Pruebas de `shared`, `api` (unitarias) y `web` |
 | `integracion` | *Service container* `postgres:17` con `docker/postgres/init.sql` montado; `npm run test:integracion` (integraci√≥n y concurrencia) |
 | `movil` | Pruebas de `mobile` con `jest-expo` |
