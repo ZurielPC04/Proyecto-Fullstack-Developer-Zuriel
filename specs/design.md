@@ -2139,6 +2139,18 @@ En la primera tarea móvil se verifica que Hermes soporte `formatToParts`. Si no
 
 **`centavosATextoDecimal(centavos)`** hace la misma separación de texto, sin `Intl`, para el CSV: `-5` → `-0.05`, `0` → `0.00` (DD-38).
 
+**`digitoVerificador(primeros17)`** (D-19, R-3.4) recibe el texto de los primeros 17 dígitos y devuelve un entero de 0 a 9: multiplica cada dígito por los pesos 3, 7, 1 en ciclo, toma cada producto módulo 10, los suma y aplica `(10 - (suma % 10)) % 10`. Solo usa enteros. Si la entrada no son exactamente 17 dígitos, lanza `RangeError`: es un error de programación, no de captura.
+
+**`validarClabe(texto)`** (R-3.2 a R-3.4, R-3.10) devuelve `{ ok: true, clabe }` o `{ ok: false, error }`, con la misma forma que `montoTextoACentavos`. Es estricta: no recorta ni quita espacios. El formulario quita los espacios antes de llamarla, igual que con el monto. Revisa en este orden y reporta el primer fallo:
+
+| Caso | `error` |
+|---|---|
+| Algún carácter no numérico (letras, espacios, guiones) | `"La CLABE solo admite números"` |
+| Longitud distinta de 18, incluido el texto vacío | `"La CLABE debe tener 18 dígitos"` |
+| Dígito verificador incorrecto | `"El dígito verificador de la CLABE no es válido"` |
+
+Casos de prueba: una CLABE cuya suma ponderada termina en 0 (dígito `0`, no `10`), la CLABE de Fondeo `999000000000000001` (§3.6), textos con letras, 17 y 19 dígitos.
+
 **Reglas de lint en `web`, `mobile` y `shared`** (RNF-09, D-18):
 
 | Regla | Prohíbe |
