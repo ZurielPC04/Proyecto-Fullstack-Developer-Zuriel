@@ -235,6 +235,16 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** el commit que corrige §1.3 y agrega esta entrada, y el de T-API-01.
 
+### Sesión 7 — 2026-11-14 · Implementación de T-CI-01 (CI con `calidad` y `unitarias`)
+
+**Herramienta:** Claude Code (Opus 5.5), flujo plan-first.
+
+**Resultado:** `.github/workflows/ci.yml` validado en local con `actionlint` y reproduciendo los pasos de cada job. Yo hice el push, y el workflow corrió en verde en GitHub (`calidad` y `unitarias`, 54 s). La casilla se marcó solo después de esa confirmación.
+
+**Alertas de `npm audit`:** las alertas moderadas vienen de `minimatch` (GHSA-g3hv-75wg-m249), dependencia de `@typescript-eslint/typescript-estree` dentro de `typescript-eslint`, que se usa solo en desarrollo. **No se aplica** `npm audit fix --force`: el arreglo que propone es bajar `typescript-eslint` a 8.36.0, un cambio incompatible que rompería el lint. Se revisará al actualizar `typescript-eslint`.
+
+**Commits relacionados:** `ad6e213` (workflow) y el commit que marca la casilla y agrega esta entrada.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
