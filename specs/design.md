@@ -701,6 +701,8 @@ Restricciones:
 > | `usuario.correo` | 3 a 254 caracteres, en minúsculas |
 >
 > Todos los campos de texto: sin espacios al inicio ni al final (`campo = btrim(campo)`) y sin caracteres de control (`campo !~ '[[:cntrl:]]'`). Zod aplica las mismas reglas en `packages/shared` (`trim` antes de validar) y la base las repite como `CHECK`.
+>
+> **Unidad de longitud.** Las longitudes se cuentan en **code points** después de normalizar a NFC, igual que `char_length` de PostgreSQL y `maxLength` de JSON Schema; no en unidades UTF-16. Un emoji simple (`😀`) cuenta 1. Un emoji compuesto con ZWJ (una familia `👨‍👩‍👧`) cuenta un code point por cada emoji y cada ZWJ que lo forman, aunque se vea como un solo símbolo.
 > **Motivo:** concepto de 40 caracteres y referencia numérica de 7 dígitos son los formatos de SPEI, lo que deja el modelo listo para una futura salida a SPEI. Prohibir caracteres de control cierra la inyección de saltos de línea en logs y en el CSV (R-B1.3).
 
 ### 3.3 Triggers y funciones
@@ -1093,9 +1095,9 @@ Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
 3. Con `--root-types --root-types-no-schema-prefix`, el generador emite un alias legible por esquema (`type Cuenta = components['schemas']['Cuenta']`, `type Comprobante = …`), sin escribirlos a mano, y `shared` los reexporta. Las respuestas, los parámetros y los headers llevan prefijo (`ResponseNoAutenticado`, `ParameterCuentaId`, `HeaderRetryAfter`).
 4. La API tipa las respuestas de sus controladores con esos alias, y web y móvil tipan su cliente `fetch` con `paths`.
 
-**Esquemas Zod y contrato.** Los esquemas Zod de entrada viven en `shared/src/esquemas` y se escriben a mano, porque llevan refinamientos que JSON Schema no expresa (dígito verificador de la CLABE, `montoTextoACentavos`). Para que no se desvíen del contrato:
+**Esquemas Zod y contrato.** Los esquemas Zod de entrada viven en `shared/src/esquemas` y se escriben a mano, porque llevan refinamientos que JSON Schema no expresa (dígito verificador de la CLABE, lista de contraseñas comunes, `desde` ≤ `hasta`). Para que no se desvíen del contrato:
 
-- Una prueba de tipos (`expectTypeOf` de Vitest) verifica que `z.infer<typeof esquema>` y el tipo generado son mutuamente asignables, para cada cuerpo de entrada.
+- Una prueba de tipos (`expectTypeOf` de Vitest) verifica, para cada cuerpo de entrada, que `z.input<typeof esquema>` y `z.output<typeof esquema>` extienden al tipo generado y el tipo generado extiende a ambos. En la query del historial solo se verifica que `z.output` extiende al tipo generado: el valor por defecto de `limite` lo vuelve obligatorio en la salida.
 - Las pruebas de integración validan **cada respuesta** de la API contra el esquema de su operación y código en `openapi.yaml`, con Ajv en modo JSON Schema 2020-12. Una respuesta que no cumple el contrato hace fallar la prueba aunque el resto de las aserciones pase.
 
 **Documentación navegable (RNF-28)**
@@ -1116,14 +1118,26 @@ Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
 
 ### 5.1 Contraseñas
 
-**Política** (cierra el pendiente §12.1 de `requirements.md`). La valida el esquema Zod de `shared` en web y en la API:
+**Política** (cierra el pendiente §12.1 de `requirements.md`). La valida el esquema Zod de `shared` en web, móvil y API:
 
 | Regla | Valor |
 |---|---|
-| Longitud | 12 a 128 caracteres, contados después de normalizar a Unicode NFC |
+| Longitud | 12 a 128 caracteres (code points, DD-16), contados después de normalizar a Unicode NFC |
 | Composición | Sin reglas de mayúsculas, números ni símbolos |
-| Prohibidas | La contraseña igual al correo, o igual a la parte local del correo, sin distinguir mayúsculas; y las de una lista de 1,000 contraseñas comunes incluida en `api` |
+| Prohibidas | La contraseña igual al correo, o igual a la parte local del correo, sin distinguir mayúsculas; y las de la lista de contraseñas comunes de `shared` (abajo) |
 | Espacios | Permitidos, sin recortar: la contraseña se usa tal como se escribió |
+| Caracteres de control | No se revisan: la contraseña no es un texto que se muestre ni se registre; solo se normaliza a NFC |
+
+El error de cualquiera de estas reglas se reporta en el campo `contrasena`. El login no aplica la política: solo exige de 1 a 128 caracteres en NFC, para que una contraseña creada con una política anterior siga funcionando.
+
+**Lista de contraseñas comunes.** Vive en `packages/shared/src/esquemas/contrasenas-comunes.ts` y la usan web, móvil y API a través del esquema de registro.
+
+- **Fuente:** SecLists (licencia MIT), archivo `Passwords/Common-Credentials/10-million-password-list-top-1000000.txt` en el commit `2d5dc7504a40962c53f932a6d9d5ece4b213dfc6`, el último en que existe con ese nombre (el commit `4ff3ff8` lo borró en favor de `xato-net-10-million-passwords-1000000.txt`, cuyo contenido no es idéntico).
+  - URL: `https://raw.githubusercontent.com/danielmiessler/SecLists/2d5dc7504a40962c53f932a6d9d5ece4b213dfc6/Passwords/Common-Credentials/10-million-password-list-top-1000000.txt`
+  - sha256: `1843265e3860a97f417b2236dfa332a0d93b38efef0fee1a0a291fdba5458478`
+- **Filtro:** en el orden de la fuente, se normaliza cada entrada a NFC, se descartan las de menos de 12 code points, se pasan a minúsculas y se toman las primeras **1,000 distintas**. Ninguna de las 1,000 primeras entradas de la fuente tiene 12 caracteres o más: la regla de longitud ya las rechaza todas, así que una lista sin filtrar no aportaría nada. Por eso se filtra antes de cortar.
+- **Formato:** las entradas se guardan ya normalizadas (NFC y minúsculas). El esquema las carga en un `Set` y compara `lista.has(contrasena.normalize('NFC').toLowerCase())`.
+- **Reproducible:** `node scripts/generar-contrasenas-comunes.mjs <ruta-del-txt>` verifica el sha256 de la entrada, falla si no coincide y escribe el archivo `.ts`. El `.txt` no se versiona; el `.ts` generado sí.
 
 **Hash.** argon2id con `memoryCost = 19456` KiB (19 MiB), `timeCost = 2` y `parallelism = 1`, el mínimo que recomienda OWASP para argon2id. El hash en formato PHC (`$argon2id$v=19$m=19456,t=2,p=1$…`) lleva sus parámetros, así que se pueden subir en el futuro sin romper los hashes existentes.
 
@@ -1131,9 +1145,13 @@ Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
 
 > **DD-28 · Aprobada · Política de contraseñas y parámetros de argon2id (cierra §12.1)**
 > **Contexto:** RNF-03 pide argon2 o bcrypt, y R-1.5 pide validar la contraseña, pero no hay política.
-> **Opciones:** (1) reglas de composición clásicas (mayúscula, número, símbolo); (2) longitud mínima y lista de contraseñas comunes, como recomienda NIST SP 800-63B.
-> **Decisión:** la opción 2, con los valores de la tabla. argon2id con los parámetros mínimos de OWASP. Normalización NFC antes de validar y de calcular el hash. Máximo de 128 caracteres. Hash ficticio en el login para igualar tiempos.
-> **Motivo:** las reglas de composición producen contraseñas predecibles (`Contraseña1!`) sin añadir entropía real; la longitud sí la añade. NFC evita que la misma contraseña escrita en dos teclados (un acento compuesto o precompuesto) produzca hashes distintos. El tope de 128 acota el costo de cada hash, para que no se pueda saturar la API con contraseñas enormes. Sin el hash ficticio, el tiempo de respuesta revelaría qué correos existen, aunque el cuerpo sea idéntico.
+> **Opciones:**
+> - Política: (1) reglas de composición clásicas (mayúscula, número, símbolo); (2) longitud mínima y lista de contraseñas comunes, como recomienda NIST SP 800-63B.
+> - Ubicación de la lista: (a) en `shared`, compartida por web, móvil y API; (b) solo en `api`.
+>
+> **Decisión:** la opción 2, con los valores de la tabla, y la lista en `shared` (opción a). Son las primeras 1,000 distintas de 12 o más caracteres de SecLists, con la fuente fijada por commit y sha256 (arriba). argon2id con los parámetros mínimos de OWASP. Normalización NFC antes de validar y de calcular el hash. Máximo de 128 caracteres. Hash ficticio en el login para igualar tiempos.
+> **Motivo:** las reglas de composición producen contraseñas predecibles (`Contraseña1!`) sin añadir entropía real; la longitud sí la añade. NFC evita que la misma contraseña escrita en dos teclados (un acento compuesto o precompuesto) produzca hashes distintos. El tope de 128 acota el costo de cada hash, para que no se pueda saturar la API con contraseñas enormes. Sin el hash ficticio, el tiempo de respuesta revelaría qué correos existen, aunque el cuerpo sea idéntico. La lista va en `shared` porque RNF-18 pide validaciones compartidas: así el usuario ve el rechazo en el formulario, no hasta el `400` de la API.
+> **Costo:** el archivo generado pesa unos 19 kB (8 kB con gzip) más en el bundle de web y móvil. La lista es pública, así que tenerla en el cliente no expone nada.
 > **Fuera de alcance:** volver a calcular el hash al subir los parámetros. Exigiría `UPDATE` sobre `hash_contrasena`, que el rol de la API no tiene (DD-18). Va en "qué haría con más tiempo".
 
 ### 5.2 Access token
@@ -1462,7 +1480,7 @@ Los valores están en DD-16 (§3.2) y se aplican igual en tres lugares: el esque
 | `clabe` | 18 dígitos con dígito verificador válido (D-19) |
 | `codigo` | 6 dígitos |
 
-Todos los textos se recortan, se normalizan a NFC y no admiten caracteres de control.
+Todos los textos se recortan, se normalizan a NFC y no admiten caracteres de control. Las longitudes se cuentan en code points después de normalizar a NFC (DD-16).
 
 ---
 
@@ -1494,8 +1512,8 @@ X-Request-Id: 6f0c…
 
 | `type` | HTTP | Cuándo | Extensiones | Requisitos |
 |---|---|---|---|---|
-| `validation-error` | 400 | Falla un esquema Zod, el JSON está mal formado, el cuerpo pasa de 16 kB, o `desde > hasta` | `errores` | R-1.5, R-3.3, R-3.4, R-4.8, R-4.9, R-4.13, R-5.2, R-5.5, R-B1.5 |
-| `invalid-cursor` | 400 | Cursor mal formado o generado con otros filtros | — | R-5.7 |
+| `validation-error` | 400 | Falla un esquema Zod, el JSON está mal formado, el cuerpo pasa de 16 kB, `desde > hasta`, o el `cursor` viene vacío o tiene más de 512 caracteres | `errores` | R-1.5, R-3.3, R-3.4, R-4.8, R-4.9, R-4.13, R-5.2, R-5.5, R-5.7, R-B1.5 |
+| `invalid-cursor` | 400 | Cursor que no se puede decodificar o generado con otros filtros | — | R-5.7 |
 | `unauthorized` | 401 | Sin access válido; refresh inválido, vencido, revocado o reusado | — | R-1.9 a R-1.11 |
 | `credenciales-invalidas` | 401 | Login con correo inexistente o contraseña incorrecta; el mismo problem en los dos casos | — | R-1.7 |
 | `not-found` | 404 | Recurso inexistente o ajeno; ruta inexistente | — | R-2.4, R-3.11, R-4.6, R-4.10, R-5.10, R-6.14, R-B1.4 |
@@ -1634,6 +1652,7 @@ filtrosHash = primeros 16 caracteres hex de SHA-256(JSON.stringify(["v1", cuenta
 - `c` es el texto de `timestamptz` con microsegundos que devuelve el parser de §2.3. Viaja a la consulta como texto con `::timestamptz`, sin pasar por `Date` (D-11, DD-07).
 - `i` es el `id` del asiento, como texto.
 - `filtrosHash` incluye el `cuentaId`. Un cursor de otra cuenta, de otro tipo o de otro rango de fechas responde `400 invalid-cursor` (R-5.7). `limite` no entra en el hash: el tamaño de página puede cambiar a mitad del recorrido.
+- **Forma antes que contenido (R-5.7):** un `cursor` vacío o de más de 512 caracteres lo rechaza el esquema Zod de la query con `400 validation-error`. `invalid-cursor` queda solo para el contenido.
 - **Decodificación estricta:** base64url válido, JSON válido, esquema Zod (`v = 1`, `c` con formato de `timestamptz`, `i` solo dígitos, `f` de 16 caracteres hex) y `f` igual al hash de la petición. Cualquier fallo responde `400 invalid-cursor`.
 - **No está firmado.** Un cursor fabricado solo permite paginar desde otro punto de **una cuenta propia**: la propiedad de la cuenta se verifica en cada petición, independientemente del cursor.
 
@@ -2106,7 +2125,7 @@ Sin dependencias de React, de Node ni de Expo. Lo usan la API, la web y la app m
 | `dinero` | `montoTextoACentavos`, `formatearMXN`, `centavosATextoDecimal`, `TOPE_CENTAVOS` | R-2.5, R-4.33, R-4.34, R-B1.2, D-18 |
 | `clabe` | `digitoVerificador`, `validarClabe` | R-3.2 a R-3.4, R-3.10, D-19 |
 | `tiempo` | `ZONA_HORARIA`, `instanteIso` (DD-22) | D-15 |
-| `esquemas` | Esquemas Zod de entrada: registro, login, refresh, beneficiario, transferencia (con `destino` discriminado, DD-26), confirmación, filtros del historial, mes; y `normalizarTexto` (`trim` + NFC) | RNF-01, RNF-18 |
+| `esquemas` | Esquemas Zod de entrada: registro, login, refresh, beneficiario, transferencia (con `destino` discriminado, DD-26), confirmación, `Idempotency-Key`, filtros del historial, mes; `normalizarTexto` (`trim` + NFC); y la lista de contraseñas comunes (`contrasenas-comunes.ts`, generada por `scripts/generar-contrasenas-comunes.mjs`, §5.1) | RNF-01, RNF-18, DD-28 |
 | `problemas` | `TIPOS_PROBLEMA` y `mensajeDeProblema(type)`: los textos en español que muestran web y móvil. El tipo `TipoProblema` no se define aquí: viene de los tipos generados del contrato (`api`) | R-4.12 |
 | `api` | Tipos generados de `openapi.yaml` y sus alias (§4.3) | RNF-18 |
 

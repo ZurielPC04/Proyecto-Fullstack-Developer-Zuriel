@@ -331,6 +331,22 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** el de T-SHR-06, `aed76b8` y `f0cbb9a` (Redocly) y el de §13.1. "CI en verde" se confirma después del push.
 
+### Sesión 13 — 2026-11-15 · Implementación de T-SHR-07 (esquemas Zod de entrada)
+
+**Herramienta:** Claude Code (Opus 5.5), skill `tdd`. La IA leyó las specs, propuso un plan con sus seams y una lista de huecos, y yo la aprobé con ajustes antes de que escribiera código.
+
+**Correcciones a los requerimientos:**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| DD-28 y §5.1: "una lista de 1,000 contraseñas comunes incluida en `api`" | Con la lista solo en la API, web y móvil no podían rechazar en el formulario lo mismo que la API, y RNF-18 pide validaciones compartidas. Además, la lista no tenía fuente ni criterio: de las 1,000 primeras entradas de SecLists, **0** tienen 12 caracteres o más, así que todas ya las rechazaba la regla de longitud | La lista vive en `shared`. Son las primeras 1,000 **distintas** (después de NFC y minúsculas) de 12 o más code points de SecLists `10-million-password-list-top-1000000.txt`, fijada por commit (`2d5dc75`) y sha256. Un script la genera de forma reproducible y verifica el sha256. DD-28 registra la opción descartada (solo en `api`) y el costo: unos 19 kB en el bundle |
+| R-5.7: "SI el cursor está mal formado … `invalid-cursor`" | Mezclaba la forma del parámetro con su contenido. Al agregar `minLength: 1` al `cursor` en `openapi.yaml`, un cursor vacío lo rechaza el esquema con `validation-error`, y R-5.7 lo contradecía | R-5.7 separa los dos casos: un cursor vacío o de más de 512 caracteres da `validation-error`, y uno que no se puede decodificar o que se generó con otros filtros da `invalid-cursor`. Se ajustaron §7.2, §8.3, T-SHR-07 y T-API-22 |
+
+**Otros huecos que cerró la IA:**
+- DD-16 y §6.7 no decían en qué unidad se cuenta la longitud. Ahora dicen code points después de NFC, como `char_length` de PostgreSQL y `maxLength` de JSON Schema, con la nota del emoji ZWJ.
+- §4.3 ponía `montoTextoACentavos` como refinamiento de Zod, pero no hay esquemas de formulario. Se cambió por refinamientos reales: el dígito verificador de la CLABE, la lista de contraseñas y `desde` ≤ `hasta`.
+- La prueba de tipos pasa a `z.input` y `z.output` en los dos sentidos. En la query del historial solo se verifica `z.output`, porque el valor por defecto de `limite` lo vuelve obligatorio.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

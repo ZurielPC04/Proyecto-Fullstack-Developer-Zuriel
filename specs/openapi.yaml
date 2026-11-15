@@ -255,7 +255,7 @@ paths:
         - name: cursor
           in: query
           description: Valor opaco de `siguienteCursor` de la página anterior.
-          schema: { type: string, maxLength: 512 }
+          schema: { type: string, minLength: 1, maxLength: 512 }
         - name: desde
           in: query
           description: Primer día incluido, en `America/Mexico_City` (R-5.5).

@@ -262,12 +262,14 @@ flowchart LR
 ### T-SHR-07 · Esquemas Zod de entrada · `shared` · P1
 
 - **Depende de:** T-SHR-02, T-SHR-03, T-SHR-06
-- **Criterios:** RNF-01, RNF-18, R-1.5, R-3.3, R-3.4, R-4.8, R-4.9, R-4.13, R-5.2, R-5.5 (`desde` ≤ `hasta`), R-B1.5
+- **Criterios:** RNF-01, RNF-18, R-1.5, R-3.3, R-3.4, R-4.8, R-4.9, R-4.13, R-5.2, R-5.5 (`desde` ≤ `hasta`), R-5.7 (forma del cursor), R-B1.5
 - **Implementa:** DD-16, DD-26, DD-28 (política de contraseña), DD-27 (prueba de tipos)
-- **Alcance** (§13.1, §3.2, §5.1, §6.7): esquemas `.strict()` de registro, login, refresh, beneficiario, transferencia (con `destino` discriminado), confirmación, filtros del historial y mes; `normalizarTexto` (`trim` + NFC); encabezado `Idempotency-Key` como UUID.
+- **Alcance** (§13.1, §3.2, §5.1, §6.7): esquemas `.strict()` de registro, login, refresh, beneficiario, transferencia (con `destino` discriminado), confirmación, filtros del historial y mes; `normalizarTexto` (`trim` + NFC); encabezado `Idempotency-Key` como UUID; lista de contraseñas comunes generada por `scripts/generar-contrasenas-comunes.mjs` (§5.1).
 - **Verificación:** `npm test -w packages/shared -- esquemas`:
-  - Casos válidos e inválidos por campo (longitudes de DD-16, referencia no numérica, monto no entero, fuera de 1 a `100000000000`, campo desconocido).
-  - `expectTypeOf` verifica que `z.infer` de cada cuerpo y el tipo generado son mutuamente asignables.
+  - Casos válidos e inválidos por campo (longitudes de DD-16 en code points, referencia no numérica, monto no entero, fuera de 1 a `100000000000`, campo desconocido).
+  - Invariantes de la lista: exactamente 1,000 entradas, todas de 12 o más code points, distintas y ya normalizadas (NFC y minúsculas).
+  - `expectTypeOf` verifica que `z.input` y `z.output` de cada cuerpo y el tipo generado se extienden en los dos sentidos; en la query del historial, solo que `z.output` extiende al tipo generado (§4.3).
+  - `npm run typecheck -w packages/shared`, porque `expectTypeOf` no falla en `vitest run`.
 - **Commit:** `feat(shared): T-SHR-07 esquemas Zod alineados al contrato [RNF-01, RNF-18, R-4.8]`
 
 ---
@@ -567,6 +569,8 @@ flowchart LR
   - 25 movimientos con el mismo instante recorridos sin huecos ni repetidos;
   - filtro de fechas en el borde de la medianoche local;
   - filtro por tipo;
+  - `cursor=` (vacío) → `400 validation-error`;
+  - cursor basura de 20 caracteres → `400 invalid-cursor`;
   - cursor de otros filtros o de otra cuenta → `400 invalid-cursor`;
   - rechazadas y pendientes no aparecen;
   - ningún `OFFSET` en el SQL (prueba unitaria del constructor).
@@ -994,7 +998,7 @@ Cada criterio de `requirements.md` aparece en al menos una tarea. Las tareas en 
 | R-5.4 | T-API-21, T-API-22 |
 | R-5.5 | T-SHR-07, T-API-22 |
 | R-5.6 | T-API-22 |
-| R-5.7 | T-API-22 |
+| R-5.7 | T-SHR-07, T-API-22 |
 | R-5.8 | T-API-07, T-API-22 |
 | R-5.9 | T-API-11, T-WEB-04, T-MOB-03 |
 | R-5.10 | T-API-22 |

@@ -213,7 +213,7 @@ Todos los montos están en **centavos enteros** (D-18).
   - _Corregido durante la fase de diseño (`design.md` §8.3):_ el ejemplo original eran "los dos asientos de un traspaso", pero esos asientos caen en cuentas distintas y nunca aparecen juntos en el historial de una cuenta.
 - **R-5.5** CUANDO se filtra por `desde` y `hasta`, la API DEBE interpretarlos como días calendario en `America/Mexico_City` e incluir los movimientos del rango `[desde 00:00, hasta + 1 día 00:00)`. SI `desde` es posterior a `hasta`, ENTONCES DEBE responder con un error de validación. _(D-11, D-15)_
 - **R-5.6** CUANDO se filtra por tipo, la API DEBE aceptar `DEPOSITO`, `ENVIO`, `RECEPCION`, `TRASPASO_SALIDA` y `TRASPASO_ENTRADA`, y devolver solo los movimientos de ese tipo. _(D-09)_
-- **R-5.7** SI el cursor está mal formado o se generó con filtros distintos a los de la petición, ENTONCES la API DEBE responder `400` con el problem `invalid-cursor`. _(D-11)_
+- **R-5.7** SI el parámetro `cursor` viene vacío o tiene más de 512 caracteres, ENTONCES la API DEBE responder con un error de validación del parámetro (`validation-error`). SI el cursor no se puede decodificar o se generó con filtros distintos a los de la petición, ENTONCES la API DEBE responder `400` con el problem `invalid-cursor`. _(D-11)_
 - **R-5.8** Las transferencias rechazadas y las pendientes de confirmación NO DEBEN aparecer en el historial de movimientos. _(D-09, D-14)_
 - **R-5.9** El sistema DEBE presentar las entradas desde Fondeo como **Depósito**, nunca como transferencia. _(D-02, D-09)_
 - **R-5.10** SI la cuenta consultada no existe o no es del usuario, ENTONCES la API DEBE responder `404`. _(D-10)_
