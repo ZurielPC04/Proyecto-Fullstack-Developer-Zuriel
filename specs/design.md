@@ -1479,6 +1479,7 @@ Los valores están en DD-16 (§3.2) y se aplican igual en tres lugares: el esque
 | `montoCentavos` | Entero de 1 a `100000000000` (D-18) |
 | `clabe` | 18 dígitos con dígito verificador válido (D-19) |
 | `codigo` | 6 dígitos |
+| uuid (ids e `Idempotency-Key`) | 8-4-4-4-12 hexadecimal, sin exigir versión, normalizado a minúsculas; igual que `format: uuid` |
 
 Todos los textos se recortan, se normalizan a NFC y no admiten caracteres de control. Las longitudes se cuentan en code points después de normalizar a NFC (DD-16).
 
