@@ -66,7 +66,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 - [x] T-SHR-04 · `shared` · P1 · Reglas de lint del dinero
 - [x] T-SHR-05 · `shared` · P1 · Módulos `tiempo` y `problemas`
 - [x] T-SHR-06 · `shared` · P1 · Tipos generados desde `openapi.yaml`
-- [ ] T-SHR-07 · `shared` · P1 · Esquemas Zod de entrada
+- [x] T-SHR-07 · `shared` · P1 · Esquemas Zod de entrada
 
 **Fase 2 · Plataforma de la API**
 
