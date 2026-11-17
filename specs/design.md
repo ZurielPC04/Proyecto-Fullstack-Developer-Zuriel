@@ -117,7 +117,8 @@ billetera/
 │       └── index.ts
 ├── api/
 │   ├── src/
-│   │   ├── main.ts             # config → base de datos → listen
+│   │   ├── main.ts             # solo cablea process, pino y listen reales con arrancar()
+│   │   ├── arranque.ts         # arrancar(dependencias): config → base de datos → listen (§2.4)
 │   │   ├── app.ts              # raíz de composición y middlewares (§2.2)
 │   │   ├── config/             # esquema Zod del entorno (§2.4)
 │   │   ├── plataforma/
@@ -394,33 +395,47 @@ conTransaccion<T>(
 
 ### 2.4 Configuración validada al arrancar
 
-`config/index.ts` lee `process.env` con un esquema Zod. Si falla, `main.ts` registra **los nombres** de las variables inválidas (nunca sus valores) y termina con código 1 antes de abrir el puerto (RNF-15).
+`config/index.ts` exporta `cargarConfiguracion(env)`, una función pura que recibe el objeto del entorno (no lee `process.env`) y lo valida con un esquema Zod. Devuelve `{ ok: true, config }` o `{ ok: false, variablesInvalidas }`, con **solo los nombres**, sin repetidos y en orden alfabético. `arrancar` (`arranque.ts`) la llama primero. Si falla, registra `{ variablesInvalidas }` (nunca los valores) y fija `process.exitCode = 1` sin conectar a la base ni abrir el puerto (RNF-15). `main.ts` solo cablea los objetos reales.
 
-| Variable | Tipo y regla | Desarrollo | Fuente |
+**Carga del `.env`.** Se hace con la opción `--env-file-if-exists=.env` de Node 24, sin `dotenv`. En producción las variables llegan del entorno.
+
+**Variables ajenas.** El esquema no usa `.strict()`, porque `process.env` trae muchas variables que no son de la API. Toma solo las de esta tabla e ignora las demás.
+
+La columna **`.env.example`** muestra los valores de `api/.env.example`. Solo `PORT`, `DB_POOL_MAX`, `DEMO_LATENCIA_MS`, `LOG_LEVEL` y `TRUST_PROXY` tienen un valor por defecto en el código, igual al de esa columna. **Las demás son obligatorias**, `NODE_ENV` incluida: si falta una, la API no arranca.
+
+| Variable | Tipo y regla | `.env.example` | Fuente |
 |---|---|---|---|
 | `NODE_ENV` | `development` \| `test` \| `production` | `development` | — |
-| `PORT` | entero | `3000` | — |
-| `DATABASE_URL` | URL, rol `billetera_app` | — | §3.4 |
-| `DATABASE_URL_MIGRACIONES` | URL, rol `billetera_owner`; solo la leen `migrar.ts` y `seed.ts` | — | §3.4 |
+| `PORT` | entero 1–65535 | `3000` | — |
+| `DATABASE_URL` | URL con protocolo `postgres:` o `postgresql:`, rol `billetera_app` | URL local | §3.4 |
 | `DB_POOL_MAX` | entero 1–50 | `10` | RNF-24 |
-| `JWT_SECRETO` | texto de 32 bytes o más | aleatorio | §5 |
-| `OTP_HMAC_SECRETO` | texto de 32 bytes o más, distinto de `JWT_SECRETO` | aleatorio | D-07 |
-| `LIMITE_DIARIO_CENTAVOS` | entero positivo seguro | `5000000` | D-13 |
-| `UMBRAL_CODIGO_CENTAVOS` | entero positivo seguro, **menor** que el límite | `1000000` | D-13 |
-| `FONDEO_BIENVENIDA_CENTAVOS` | entero ≥ 0 seguro | `1000000` | D-20 |
+| `JWT_SECRETO` | texto de 32 bytes o más | vacío; se genera | §5 |
+| `OTP_HMAC_SECRETO` | texto de 32 bytes o más, distinto de `JWT_SECRETO` | vacío; se genera | D-07 |
+| `LIMITE_DIARIO_CENTAVOS` | entero seguro mayor que 0 | `5000000` | D-13 |
+| `UMBRAL_CODIGO_CENTAVOS` | entero seguro mayor que 0, **menor** que el límite | `1000000` | D-13 |
+| `FONDEO_BIENVENIDA_CENTAVOS` | entero seguro ≥ 0 | `1000000` | D-20 |
 | `OTP_SIMULADO` | booleano | `true` | D-07 |
 | `DEMO_LATENCIA_MS` | entero 0–30000 | `0` | D-17 |
-| `WEB_ORIGIN` | URL | `http://localhost:5173` | RNF-05 |
-| `LOG_LEVEL` | nivel de `pino` | `info` | RNF-12 |
+| `WEB_ORIGIN` | solo un origen `http:` o `https:`, sin ruta, query, fragmento ni `/` final; `https:` en producción | `http://localhost:5173` | RNF-05, DD-24 |
+| `LOG_LEVEL` | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace` \| `silent` | `info` | RNF-12 |
 | `TRUST_PROXY` | entero ≥ 0 (saltos de proxy confiables) | `0` | §11 |
 
-Reglas cruzadas con `superRefine`:
+**`DATABASE_URL_MIGRACIONES`** (URL con el rol `billetera_owner`, §3.4) **no forma parte del esquema de la API**. Está en `api/.env.example`, pero solo la leen `migrar.ts` y `seed.ts` (T-API-04). Aunque esté presente, `config` no la contiene.
 
-- `UMBRAL_CODIGO_CENTAVOS < LIMITE_DIARIO_CENTAVOS` (RNF-15).
-- Si `NODE_ENV=production`: `OTP_SIMULADO=false`, `DEMO_LATENCIA_MS=0` y `FONDEO_BIENVENIDA_CENTAVOS=0` (RNF-15, R-6.17).
-- `OTP_HMAC_SECRETO ≠ JWT_SECRETO`.
+**Enteros.** El texto debe cumplir `^(0|[1-9][0-9]*)$`, después se convierte con `Number` y se exige `Number.isSafeInteger`, y al final se aplica el rango. Nunca se usa `z.coerce`, que aceptaría `"1.5"`, `"1e6"`, `" 10"` o `""` (este último como `0`).
 
-Los booleanos se leen como `'true'` o `'false'` exactos. Zod no convierte `'0'` ni `'no'`, para que un valor mal escrito no active el OTP simulado por accidente.
+**Secretos.** Los 32 bytes se miden con `Buffer.byteLength(valor, 'utf8')`, no con `.length`, que cuenta unidades UTF-16. En `api/.env.example` los secretos van vacíos, con el comando para generarlos (`node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`). Así, copiar el ejemplo sin generarlos impide arrancar en vez de dejar un secreto conocido.
+
+Reglas cruzadas con `superRefine`. Cada una reporta el nombre de la variable que la rompe:
+
+- `UMBRAL_CODIGO_CENTAVOS < LIMITE_DIARIO_CENTAVOS` (RNF-15). Reporta `UMBRAL_CODIGO_CENTAVOS`.
+- Si `NODE_ENV=production`: `OTP_SIMULADO=false`, `DEMO_LATENCIA_MS=0` y `FONDEO_BIENVENIDA_CENTAVOS=0` (RNF-15, R-6.17). Cada una se reporta por separado.
+- Si `NODE_ENV=production`: `WEB_ORIGIN` con `https:`, porque la cookie del refresh lleva `Secure` (DD-24). Reporta `WEB_ORIGIN`.
+- `OTP_HMAC_SECRETO ≠ JWT_SECRETO`. Reporta `OTP_HMAC_SECRETO`.
+
+Los booleanos se leen como `'true'` o `'false'` exactos. Zod no convierte `'0'`, `'1'`, `'TRUE'` ni `'no'`, para que un valor mal escrito no active el OTP simulado por accidente.
+
+**El registro de la configuración inválida.** Se escribe antes de conocer `LOG_LEVEL`, así que usa el nivel `info` de pino y el evento `error`.
 
 ---
 
