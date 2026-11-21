@@ -1919,7 +1919,10 @@ Tabla `evento_auditoria` (§3.2), de solo inserción (RNF-11, DD-18).
 | `POST /auth/registro` | IP | 1 hora | 5 | Todas las peticiones | R-1.18, D-20 |
 | `POST /beneficiarios` | `usuarioId` | 1 hora | 10 | Todas las peticiones | R-3.9, D-19 |
 
-- **Login por correo:** frena la adivinación de contraseñas contra una cuenta aunque el atacante cambie de IP. Solo cuenta los fallos, para que el dueño no se bloquee al iniciar sesión varias veces. La llave sale del correo del cuerpo, normalizado como en el esquema; si el cuerpo no trae correo, la petición solo cuenta en el límite por IP.
+- **Headers:** `RateLimit-Limit`, `RateLimit-Remaining` y `RateLimit-Reset` (`standardHeaders: 'draft-6'`), sin los `X-RateLimit-*` antiguos. El `429` además lleva `Retry-After` en segundos. El problem lo produce `manejadorErrores`, como cualquier otro `type` (§7.3).
+- **Dónde viven:** cada módulo crea sus limitadores dentro de su función de rutas (§2.1): `rutasIdentidad` los de login y registro, `rutasBeneficiarios` el del alta, después de `autenticar`. Como `crearModulos` corre en cada `crearApp`, cada app tiene su propio almacén.
+- **Llave por IP:** `ipKeyGenerator(req.ip)` de la librería. Una IPv6 cuenta por su subred `/56`, porque un solo cliente suele tener un bloque entero y podría rotar direcciones dentro de él.
+- **Login por correo:** frena la adivinación de contraseñas contra una cuenta aunque el atacante cambie de IP. Solo cuenta los fallos, para que el dueño no se bloquee al iniciar sesión varias veces. Un fallo es cualquier respuesta `>= 400`, incluido el `400` de validación. La llave sale del correo del cuerpo, normalizado como en el esquema (`trim` y minúsculas). Si el cuerpo no trae correo, o no es texto, la petición solo cuenta en el límite por IP.
 - **Registro por IP:** acota la enumeración de correos que permite el `409` (concesión de DD-23) y la fila que se forma sobre Fondeo (D-20).
 - **Beneficiarios por usuario:** el alta no puede usarse como oráculo de qué CLABE existe (D-19).
 - **Sin rate limit** en:
