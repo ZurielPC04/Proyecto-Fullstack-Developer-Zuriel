@@ -468,6 +468,14 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-09):** el `docs(specs)` de la guarda y del `globalSetup` desde cero, y el de T-API-09.
 
+**Corrección a los requerimientos (T-CI-02):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §14.5: *service container* `postgres:17` "con `docker/postgres/init.sql` montado" | GitHub Actions arranca los *service containers* antes del checkout: el archivo todavía no existe en el runner y no se puede montar | §14.5: después del checkout, un paso ejecuta `init.sql` con `psql -v ON_ERROR_STOP=1` como superusuario, y `PRUEBAS_DATABASE_URL*` apuntan al contenedor. Claude Code señaló que el montaje no funciona; yo elegí esta opción (D1, A) |
+
+**Pendiente (T-CI-02):** el job no se puede probar sin hacer push. Quedó listo y con su commit, pero la casilla **no** está marcada en `tasks.md` hasta que corra en verde en Actions.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
