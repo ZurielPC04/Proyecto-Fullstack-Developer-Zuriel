@@ -583,6 +583,24 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-15):** `bcc2d37` (orden de las cuentas) y el de T-API-15.
 
+**Correcciones a los requerimientos (T-API-16):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §7.2: `beneficiario-duplicado` con "`errores` (campo `clabe` o `alias`)" | No fijaba el texto exacto del campo; los `400` usan `body.clabe` (§7.3), y con dos formas el cliente necesitaría dos mapeos | Un solo elemento con `body.clabe` o `body.alias`, según la restricción que falló (H4), en §7.2, §7.3 y la descripción del `409` en `openapi.yaml` |
+| `openapi.yaml`: lista "ordenada por alias" | El alias es único sin distinguir mayúsculas, pero el orden no lo decía | Por `lower(alias)` y después `id`, para que el orden sea estable |
+
+**Decisiones de implementación (T-API-16):**
+- Orden de R-3.2: los pasos 1 y 2 los valida el esquema de `shared` (`400` en `body.clabe`); el paso 3 lo hace el caso de uso con `tipo = 'USUARIO'` (`422 clabe-not-found`). La prueba usa una CLABE cuyos 17 primeros dígitos son de una cuenta real, con el dígito verificador alterado: responde el `400` del dígito, no el `422` ni un alta.
+- El duplicado sale del `23505` en `uq_beneficiario_usuario_clabe` o `uq_beneficiario_usuario_alias`, traducido en `manejadorErrores` por nombre de restricción, sin `SELECT` previo.
+- `esCuentaPropia` compara el dueño de la cuenta con el usuario; de la cuenta destino solo se leen `id` y `usuario_id`. El controlador arma el cuerpo con las cinco claves del contrato.
+- El alta audita `beneficiario-creado` con `{ beneficiarioId, clabe: enmascarada }` en la misma transacción (DD-40).
+- Ruta: `autenticar` → limitador por `usuarioId` → `validar`. La prueba de R-3.9 manda 10 cuerpos inválidos (todos cuentan, §11), y la 11.ª alta, válida, da `429` sin crear la fila. La prueba de T-API-14 que montaba su ruta después de `crearModulos` empezó a recibir la ruta real; ahora monta solo la suya.
+- Mutaciones, las dos rojas: (d) el caso de uso agrega el correo del dueño de la cuenta destino y el controlador responde el objeto sin filtrar, y fallan tres pruebas por las claves exactas; (e) la búsqueda sin `tipo = 'USUARIO'`, y la CLABE de Fondeo responde `500` en vez de `422`, porque el trigger `validar_beneficiario` de la base la rechaza (la segunda red). Desde la mutación (c), las mutaciones se aplican y revierten con la herramienta de edición, y el hash se verifica con `sha256sum` en un comando aparte, por indicación mía.
+- Dos corridas más cayeron con `0xC0000409` (un archivo, con hilos, sin nada en paralelo) y pasaron al repetirse. `pool: 'threads'` redujo las caídas, pero no las eliminó.
+
+**Commits relacionados (T-API-16):** `17e8236` (campo del `409` y orden de la lista) y el de T-API-16.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

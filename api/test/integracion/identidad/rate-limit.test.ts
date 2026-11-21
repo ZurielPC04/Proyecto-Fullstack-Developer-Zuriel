@@ -4,7 +4,6 @@ import request from 'supertest';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DependenciasApp } from '../../../src/app.js';
-import { crearModulos } from '../../../src/modulos/index.js';
 import { crearAutenticar } from '../../../src/plataforma/http/autenticar.js';
 import { limiteAltaBeneficiarios } from '../../../src/plataforma/http/limites.js';
 import { crearTokens } from '../../../src/plataforma/seguridad/tokens.js';
@@ -198,7 +197,8 @@ describe('rate limit del alta de beneficiarios (T-API-14)', () => {
   it('R-3.9 RNF-04: la 11.ª alta en la hora del mismo usuario responde 429 sin atenderse; otro usuario no se ve afectado', async () => {
     const atendidas: string[] = [];
     const { app } = appReal(dataSource, {
-      modulos: (deps) => [...crearModulos(deps), altaDePrueba(deps, atendidas)],
+      // Solo la ruta de prueba: la real (T-API-16) tiene su propia prueba de R-3.9.
+      modulos: (deps) => [altaDePrueba(deps, atendidas)],
     });
     const tokens = crearTokens(configDePrueba().JWT_SECRETO);
     const [ana, beto] = [randomUUID(), randomUUID()];

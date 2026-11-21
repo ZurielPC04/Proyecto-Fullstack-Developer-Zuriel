@@ -42,6 +42,13 @@ export class CredencialesInvalidas extends ErrorDominio {
   }
 }
 
+/** `422 clabe-not-found`: CLABE válida que no es de ninguna cuenta de usuario, Fondeo incluida (R-3.5). */
+export class ClabeNoEncontrada extends ErrorDominio {
+  constructor(opciones?: ErrorOptions) {
+    super('clabe-not-found', {}, opciones);
+  }
+}
+
 /** `429 too-many-requests`: rate limit excedido; el limitador ya fijó `Retry-After` (§11). */
 export class DemasiadasPeticiones extends ErrorDominio {
   constructor(opciones?: ErrorOptions) {
