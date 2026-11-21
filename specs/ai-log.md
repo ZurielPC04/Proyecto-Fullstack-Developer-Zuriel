@@ -539,6 +539,12 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-13):** `2baca95` (`X-Requested-With`, canales del refresh y el `Reloj` en la sesión) y el de T-API-13.
 
+### Sesión 20 — 2026-11-21 · Implementación de T-API-14 a T-API-16 (rate limit, cuentas y beneficiarios)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó §2.1, §2.2, §3.2, §3.6, §7.2, §7.3, §11, D-10, D-19, DD-23, DD-26, DD-41 y el contrato de cuentas y beneficiarios, y propuso un solo plan para las tres tareas con sus seams y cuatro huecos (H1 a H4). Lo aprobé una vez, con un cambio en H1.
+
+**Decisión sobre las pruebas (paso previo):** la integración corre con `pool: 'threads'`, conservando `fileParallelism: false`. Las corridas completas con `forks` caían en Windows con `0xC0000409` sin ninguna prueba fallida (sesión 19). Con hilos, tres corridas completas seguidas pasaron: 20 archivos y 162 pruebas cada una. No cambia ningún requerimiento.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

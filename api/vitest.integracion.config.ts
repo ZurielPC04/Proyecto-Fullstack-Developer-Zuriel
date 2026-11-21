@@ -27,6 +27,9 @@ export default defineConfig({
     exclude: modoFixture ? [...configDefaults.exclude] : [...configDefaults.exclude, FIXTURES],
     globalSetup: ['test/integracion/apoyo/global-setup.ts'],
     setupFiles: ['test/integracion/apoyo/por-archivo.ts'],
+    // Hilos en vez de procesos: con forks, las corridas completas caían en Windows con
+    // 0xC0000409 (abort de Node) sin ninguna prueba fallida; con threads pasan (RNF-23).
+    pool: 'threads',
     // Los archivos comparten la base y los advisory locks: en serie.
     fileParallelism: false,
     // lock_timeout (5 s) y statement_timeout (10 s) se prueban de verdad.
