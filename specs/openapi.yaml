@@ -147,7 +147,7 @@ paths:
         - name: X-Requested-With
           in: header
           required: false
-          description: Obligatorio cuando el refresh viaja en la cookie.
+          description: Obligatorio cuando el refresh viaja en la cookie; si falta o trae otro valor, `400` en `headers.x-requested-with` (DD-24).
           schema: { const: fetch }
       requestBody:
         required: false
@@ -184,7 +184,7 @@ paths:
         - name: X-Requested-With
           in: header
           required: false
-          description: Obligatorio cuando el refresh viaja en la cookie.
+          description: Obligatorio cuando el refresh viaja en la cookie; si falta o trae otro valor, `400` en `headers.x-requested-with` (DD-24).
           schema: { const: fetch }
       requestBody:
         required: false

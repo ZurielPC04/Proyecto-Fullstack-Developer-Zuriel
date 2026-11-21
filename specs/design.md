@@ -313,7 +313,7 @@ interface ProveedorOtp {
 > **DD-07 · Aprobada · Las marcas de tiempo de negocio salen del Reloj y viajan como texto**
 > **Contexto:** D-15 pide un reloj inyectable para probar la medianoche, y D-11 prohíbe pasar `creado_en` por `Date`, que solo tiene milisegundos. Si `aplicada_en` saliera del reloj y `creado_en` de `DEFAULT now()`, en las pruebas habría dos relojes distintos.
 > **Decisión:**
-> - Toda marca de negocio (`transferencia.creado_en`, `transferencia.aplicada_en`, `asiento.creado_en`, `codigo_confirmacion.expira_en`) se escribe con el valor de `Reloj.ahora(tx)`, leído una vez por transacción. _Precisado por DD-36: se lee con `clock_timestamp()` **después** de tomar los bloqueos que protegen la decisión, no al inicio de la transacción._ Los `DEFAULT now()` quedan solo como red para tablas sin reglas de tiempo (sesión, auditoría).
+> - Toda marca de negocio (`transferencia.creado_en`, `transferencia.aplicada_en`, `asiento.creado_en`, `codigo_confirmacion.expira_en`) se escribe con el valor de `Reloj.ahora(tx)`, leído una vez por transacción. _Precisado por DD-36: se lee con `clock_timestamp()` **después** de tomar los bloqueos que protegen la decisión, no al inicio de la transacción._ Los `DEFAULT now()` quedan solo como red para tablas sin reglas de tiempo (auditoría). La sesión sí tiene una regla de tiempo (`expira_en <= ahora`) y también usa el `Reloj` (§5.3).
 > - La conexión fija `TimeZone=UTC`. Los parsers de `pg` devuelven `timestamptz` (OID 1184) como **texto**, nunca como `Date`; las columnas de las entidades se tipan como `string`.
 > - El formato del texto en la API se define en §4.1.
 > **Motivo:** un solo origen del tiempo por transacción. La prueba de medianoche controla `aplicada_en` y `creado_en` a la vez, y los microsegundos del cursor nunca se truncan.
@@ -1120,8 +1120,8 @@ Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
 > **Opciones:** (1) detectar el cliente por `User-Agent`; (2) un header propio; (3) un campo explícito en el login.
 > **Decisión:**
 > - `POST /auth/login` recibe `cliente: "web" | "movil"`. Con `web`, el refresh va **solo** en la cookie `billetera_refresh`; con `movil`, solo en el cuerpo.
-> - `POST /auth/refresh` y `POST /auth/logout` aceptan el refresh por cookie **o** por cuerpo; si llegan los dos, o ninguno en el refresh, responden `400`. **La respuesta usa el mismo canal por el que llegó el refresh**, sin importar lo que diga el cliente: un refresh por cookie nunca produce un refresh en el cuerpo.
-> - Con cookie, el refresh y el logout exigen `X-Requested-With: fetch` (R-1.16).
+> - `POST /auth/refresh` y `POST /auth/logout` aceptan el refresh por cookie **o** por cuerpo. Si llegan los dos, los dos responden `400 validation-error` con el campo `body.refreshToken`; si no llega ninguno, el refresh responde ese mismo `400` y el logout responde `204`. **La respuesta usa el mismo canal por el que llegó el refresh**, sin importar lo que diga el cliente: un refresh por cookie nunca produce un refresh en el cuerpo.
+> - Con cookie, el refresh y el logout exigen `X-Requested-With: fetch` (R-1.16). Si falta o trae otro valor, responden `400 validation-error` con el campo `headers.x-requested-with`, sin buscar ni tocar la sesión. Es un error de forma de la petición, como cualquier otro header inválido, y no se confunde con el `401` de un refresh inválido.
 > - El registro **no** abre sesión: responde `201` con `{ id, correo }`, y el cliente llama después a `/auth/login`.
 > - El logout responde `204` aunque el refresh ya no sea válido, y siempre borra la cookie.
 > **Motivo:** el canal de respuesta queda atado al canal de entrada, así que un XSS en la web no puede convertir la cookie en un refresh legible. Que el registro no abra sesión deja un solo lugar donde se emiten tokens y se escribe la cookie.
@@ -1237,7 +1237,9 @@ El middleware `autenticar` **no consulta la base**: verifica firma y claims y po
 
 **Cookie de la web** (D-06, DD-24): `billetera_refresh=<valor>; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=<segundos hasta expira_en>`.
 
-**Login.** Crea una fila en `sesion` con `familia_id` nueva y `expira_en = ahora + 7 días`.
+**Login.** Crea una fila en `sesion` con `familia_id` nueva, `creado_en = ahora` y `expira_en = ahora + 7 días`.
+
+**El instante de la sesión.** En login, rotación y logout, `ahora` es `Reloj.ahora(tx)` (DD-07), leído después del `SELECT … FOR UPDATE` cuando lo hay. Con ese valor se compara `expira_en <= ahora` y se escriben `creado_en`, `usada_en` y `revocada_en`. Así las pruebas controlan el vencimiento de la familia con `RelojFijo`, sin escribir en la base como dueño. El `Max-Age` de la cookie son los segundos enteros de `expira_en − ahora`, calculados en SQL.
 
 **Rotación** (`POST /auth/refresh`), en una `conTransaccion`:
 
@@ -1271,7 +1273,7 @@ El reúso se devuelve como resultado, no como excepción, para que la revocació
 | Superficie | Protección |
 |---|---|
 | Endpoints con `Authorization: Bearer` | No aplica CSRF: el navegador no adjunta ese header por su cuenta |
-| `POST /auth/refresh` y `/auth/logout` por cookie | `SameSite=Strict`, más el header `X-Requested-With: fetch`, que obliga a un *preflight* CORS desde otro origen (R-1.16, RNF-05) |
+| `POST /auth/refresh` y `/auth/logout` por cookie | `SameSite=Strict`, más el header `X-Requested-With: fetch`, que obliga a un *preflight* CORS desde otro origen (R-1.16, RNF-05). Sin él, `400 validation-error` en `headers.x-requested-with` (DD-24) |
 | CORS | `origin: WEB_ORIGIN`, `credentials: true`. En local, la web y la API comparten origen gracias al proxy de Vite (D-06), así que CORS solo actúa ante orígenes ajenos |
 
 El rate limit de login y registro está en §11, y los eventos de auditoría de sesión en §10.

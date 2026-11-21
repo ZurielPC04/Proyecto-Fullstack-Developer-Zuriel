@@ -847,7 +847,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Obligatorio cuando el refresh viaja en la cookie. */
+                /** @description Obligatorio cuando el refresh viaja en la cookie; si falta o trae otro valor, `400` en `headers.x-requested-with` (DD-24). */
                 "X-Requested-With"?: "fetch";
             };
             path?: never;
@@ -879,7 +879,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Obligatorio cuando el refresh viaja en la cookie. */
+                /** @description Obligatorio cuando el refresh viaja en la cookie; si falta o trae otro valor, `400` en `headers.x-requested-with` (DD-24). */
                 "X-Requested-With"?: "fetch";
             };
             path?: never;
