@@ -1033,7 +1033,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Beneficiarios del usuario, ordenados por alias. */
+            /** @description Beneficiarios del usuario, ordenados por alias sin distinguir mayúsculas. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1072,7 +1072,10 @@ export interface operations {
             };
             400: components["responses"]["ErrorValidacion"];
             401: components["responses"]["NoAutenticado"];
-            /** @description Ya existe un beneficiario del usuario con esa CLABE o ese alias (R-3.7). */
+            /**
+             * @description Ya existe un beneficiario del usuario con esa CLABE o ese alias, sin distinguir
+             *     mayúsculas (R-3.7). `errores` trae un elemento con el campo `body.clabe` o `body.alias`.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;

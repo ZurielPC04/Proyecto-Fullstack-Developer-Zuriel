@@ -321,7 +321,7 @@ paths:
       operationId: listarBeneficiarios
       responses:
         '200':
-          description: Beneficiarios del usuario, ordenados por alias.
+          description: Beneficiarios del usuario, ordenados por alias sin distinguir mayúsculas.
           content:
             application/json:
               schema:
@@ -355,7 +355,9 @@ paths:
         '400': { $ref: '#/components/responses/ErrorValidacion' }
         '401': { $ref: '#/components/responses/NoAutenticado' }
         '409':
-          description: Ya existe un beneficiario del usuario con esa CLABE o ese alias (R-3.7).
+          description: |
+            Ya existe un beneficiario del usuario con esa CLABE o ese alias, sin distinguir
+            mayúsculas (R-3.7). `errores` trae un elemento con el campo `body.clabe` o `body.alias`.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/ProblemaValidacion' }

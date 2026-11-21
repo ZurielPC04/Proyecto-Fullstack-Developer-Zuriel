@@ -1581,7 +1581,7 @@ X-Request-Id: 6f0c…
 | `credenciales-invalidas` | 401 | Login con correo inexistente o contraseña incorrecta; el mismo problem en los dos casos | — | R-1.7 |
 | `not-found` | 404 | Recurso inexistente o ajeno; ruta inexistente | — | R-2.4, R-3.11, R-4.6, R-4.10, R-5.10, R-6.14, R-B1.4 |
 | `correo-ya-registrado` | 409 | Registro con un correo existente (concesión de DD-23) | — | R-1.4 |
-| `beneficiario-duplicado` | 409 | Misma CLABE o mismo alias, sin distinguir mayúsculas, entre los beneficiarios del usuario | `errores` (campo `clabe` o `alias`) | R-3.7 |
+| `beneficiario-duplicado` | 409 | Misma CLABE o mismo alias, sin distinguir mayúsculas, entre los beneficiarios del usuario | `errores` con un solo elemento, campo `body.clabe` o `body.alias` (el prefijo de §7.3) | R-3.7 |
 | `clabe-not-found` | 422 | CLABE válida que no es de ninguna cuenta de usuario | — | R-3.5 |
 | `misma-cuenta` | 422 | Origen igual a destino; no se crea la fila | — | R-4.4 |
 | `idempotency-key-reused` | 422 | Misma llave con otro cuerpo | — | R-4.15 |
@@ -1607,7 +1607,7 @@ Los `type` de esta tabla son exactamente el `enum` de `TipoProblema` en `openapi
 | Cuerpo demasiado grande | `type = 'entity.too.large'` | `400 validation-error` con `campo: "body"` |
 | `ErrorDominio` | Clase; lleva su `type` | El de su `type` |
 | `23505` en `uq_usuario_correo` | `constraint` del error de `pg` | `409 correo-ya-registrado` |
-| `23505` en `uq_beneficiario_usuario_clabe` o `uq_beneficiario_usuario_alias` | `constraint` | `409 beneficiario-duplicado` con el campo |
+| `23505` en `uq_beneficiario_usuario_clabe` o `uq_beneficiario_usuario_alias` | `constraint` | `409 beneficiario-duplicado` con `errores: [{ campo: 'body.clabe' }]` o `[{ campo: 'body.alias' }]`, según la restricción |
 | `23505` en `uq_transferencia_usuario_llave` | `constraint` | Lo resuelve el caso de uso (§6.2); nunca llega aquí |
 | `55P03`, `57014`, `40P01` agotado, conexión rechazada | `code` de `pg` | `503 retryable` (DD-10) |
 | Cualquier otro error | — | `500 internal-error` |
