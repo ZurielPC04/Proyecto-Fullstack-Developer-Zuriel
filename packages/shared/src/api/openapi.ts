@@ -124,7 +124,7 @@ export interface paths {
         };
         /**
          * Lista las cuentas del usuario con su saldo
-         * @description Nunca incluye la cuenta Fondeo (R-2.3).
+         * @description En orden, `Principal` y después `Ahorro`. Nunca incluye la cuenta Fondeo (R-2.3).
          */
         get: operations["listarCuentas"];
         put?: never;

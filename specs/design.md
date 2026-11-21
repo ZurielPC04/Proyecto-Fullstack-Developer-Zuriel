@@ -1110,6 +1110,7 @@ Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
 
 **Notas de diseño**
 
+- **Orden de `GET /cuentas`:** `Principal` y después `Ahorro`, siempre en ese orden.
 - **`GET /transferencias/{id}` puede escribir.** Si la transferencia está pendiente y su código venció, la deja `RECHAZADA/CODIGO_EXPIRADO` antes de responder (D-14, R-6.12). Es un `GET` idempotente en su efecto: dos llamadas dejan el mismo estado. Por eso también puede responder `503`.
 - **Confirmar es idempotente sin llave.** El `id` de la transferencia ya identifica la operación: confirmar una aplicada devuelve el mismo `201`, y confirmar una rechazada devuelve el mismo `422` (R-6.13).
 - **Respuestas de `POST /transferencias` y su repetición.** Las tres salen de `respuestaDeTransferencia(fila)` (§2.1, §6.2), con la excepción de DD-25.
