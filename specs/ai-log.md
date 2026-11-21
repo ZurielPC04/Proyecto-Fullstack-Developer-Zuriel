@@ -545,6 +545,28 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Decisión sobre las pruebas (paso previo):** la integración corre con `pool: 'threads'`, conservando `fileParallelism: false`. Las corridas completas con `forks` caían en Windows con `0xC0000409` sin ninguna prueba fallida (sesión 19). Con hilos, tres corridas completas seguidas pasaron: 20 archivos y 162 pruebas cada una. No cambia ningún requerimiento.
 
+**Corrección al prompt (plan):**
+
+| Qué pedía | Problema | Decisión |
+|---|---|---|
+| Mi prompt: "los limitadores se crean dentro de `crearApp`", para que cada prueba tenga su propio almacén | Contradice §2.1, donde las rutas declaran el rate limit. Además, el limitador del alta va por `usuarioId` y debe ir después de `autenticar`: montado en `crearApp`, el JWT se verificaría dos veces. Claude Code propuso montarlos en `crearApp` y documentarlo (H1) | Cada módulo crea sus limitadores dentro de su función de rutas. `crearModulos` corre en cada `crearApp`, así que el aislamiento entre pruebas se conserva sin cambiar §2.1 |
+
+**Correcciones a los requerimientos (T-API-14):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §11: "`Retry-After` y los headers estándar `RateLimit-*`" | No fijaba el borrador del estándar, ni cómo contar una IPv6, ni qué es un "fallo" del login por correo, ni dónde viven los limitadores | §11: `draft-6` (`RateLimit-Limit`, `-Remaining`, `-Reset`) sin `X-RateLimit-*`; IPv6 por su subred `/56` con `ipKeyGenerator`; fallo = respuesta `>= 400`, incluido el `400`; si el correo falta o no es texto, solo cuenta el límite por IP; limitadores en la función de rutas de cada módulo (H2) |
+
+**Decisiones de implementación (T-API-14):**
+- `express-rate-limit@8.7.3` exacta: su peer es `express >= 4.11`, compatible con express 5.3.0. En su código fuente se verificó que `Retry-After` se fija antes de llamar al `handler`. El `handler` hace `next(new DemasiadasPeticiones())`, así que el `429` sale de `manejadorErrores` con el mismo `responderProblema`.
+- `plataforma/http/limites.ts` crea los cuatro limitadores. Login y registro van antes de `validar`, así que un `429` no llega al caso de uso: la prueba verifica en la base que el 6.º registro no creó al usuario.
+- El límite del alta de beneficiarios se prueba en esta tarea con una ruta de prueba de la forma de `POST /beneficiarios` (`autenticar` → limitador → `201`). T-API-16 lo monta en la ruta real.
+- La IPv6 se prueba con `TRUST_PROXY=1` y `X-Forwarded-For`: dos direcciones de la misma `/56` comparten el contador y una de otra `/56` no.
+- Mutaciones, las dos rojas: (a) `trust proxy` en `true`, porque un `X-Forwarded-For` inventado esquivaba el límite de registro (`201` en vez de `429`); (b) sin `skipSuccessfulRequests`, porque 5 logins correctos agotaban el límite y el primer fallo ya respondía `429`.
+- Al correr las seis verificaciones en paralelo, unitarias e integración cayeron con `0xC0000409`; corridas solas pasaron (152 y 169). Desde entonces se corren en serie.
+
+**Commits relacionados (T-API-14):** `c9aee46` (§11) y el de T-API-14.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

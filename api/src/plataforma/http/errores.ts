@@ -42,6 +42,13 @@ export class CredencialesInvalidas extends ErrorDominio {
   }
 }
 
+/** `429 too-many-requests`: rate limit excedido; el limitador ya fijó `Retry-After` (§11). */
+export class DemasiadasPeticiones extends ErrorDominio {
+  constructor(opciones?: ErrorOptions) {
+    super('too-many-requests', {}, opciones);
+  }
+}
+
 /** `503 retryable` con `Retry-After: 1` (DD-10, §10.3). */
 export class Reintentable extends ErrorDominio {
   constructor(opciones?: ErrorOptions) {
