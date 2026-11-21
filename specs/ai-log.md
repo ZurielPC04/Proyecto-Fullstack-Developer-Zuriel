@@ -427,6 +427,8 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-05):** `2d503d7` (nombres de triggers con `constraint`, `uuid` por defecto, reglas del correo y `clabe_valida` estricta) y el de T-API-05.
 
+**T-API-06:** sin correcciones a los requerimientos. §3.2, §3.3 y DD-16 coinciden para `beneficiario`. La migración aplica las convenciones ya corregidas en T-API-05: nombres de §7.3, `CONSTRAINT` en el `RAISE` de `validar_beneficiario` y `DEFAULT gen_random_uuid()`.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
