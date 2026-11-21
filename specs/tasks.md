@@ -398,7 +398,7 @@ flowchart LR
 - **Criterios:** R-2.2, R-4.4, RNF-06, RNF-07, RNF-11, RNF-23
 - **Implementa:** DD-17, DD-18
 - **Alcance:** `api/test/integracion/integridad.test.ts` con cada fila de la tabla de DD-17 y de la tabla de RNF-06 de §3.3; `permisos.test.ts` con cada fila de la tabla de DD-18, incluida la revisión de `pg_proc` para el `search_path` de las funciones `SECURITY DEFINER`.
-- **Verificación:** `npx vitest run -c vitest.integracion.config.ts -t "RNF-06|RNF-11|DD-17|DD-18"`. Cada caso espera el `SQLSTATE` indicado y verifica después que no cambió ninguna fila ni saldo.
+- **Verificación:** `npm run test:integracion -w api -- -t "RNF-06|RNF-11|DD-17|DD-18"`. Cada caso espera el `SQLSTATE` indicado y verifica después que no cambió ninguna fila ni saldo.
 - **Commit:** `test(api): T-API-10 la base rechaza dinero incoherente y escrituras prohibidas [RNF-06, RNF-11]`
 
 ---

@@ -304,8 +304,11 @@ interface Reloj {
 interface ProveedorOtp {
   enviar(usuarioId: string, codigo: string): Promise<{ codigoSimulado?: string }>;
 }
-// ProveedorOtpSimulado: solo se instancia con OTP_SIMULADO=true (D-07)
+// ProveedorOtpSimulado:     solo se instancia con OTP_SIMULADO=true (D-07)
+// ProveedorOtpNoConfigurado: se instancia con OTP_SIMULADO=false mientras no exista un proveedor real
 ```
+
+**`ProveedorOtpNoConfigurado`.** Con `OTP_SIMULADO=false`, que es el caso de producción, `crearApp` recibe este proveedor, cuyo `enviar` siempre lanza. Es el punto de integración donde un despliegue conecta SMS o correo. El envío ocurre **después del `COMMIT`** (§6.5), así que no se hacen llamadas externas con bloqueos tomados. Si `enviar` falla, sea este proveedor o uno real, la API registra la causa en el log y responde `500 internal-error`. La transferencia queda `PENDIENTE_CONFIRMACION`: no mueve dinero, no consume el límite (que se valida al confirmar) y expira sola a los 5 minutos (§6.5).
 
 > **DD-07 · Aprobada · Las marcas de tiempo de negocio salen del Reloj y viajan como texto**
 > **Contexto:** D-15 pide un reloj inyectable para probar la medianoche, y D-11 prohíbe pasar `creado_en` por `Date`, que solo tiene milisegundos. Si `aplicada_en` saliera del reloj y `creado_en` de `DEFAULT now()`, en las pruebas habría dos relojes distintos.
@@ -377,6 +380,7 @@ conTransaccion<T>(
 | `57014` | `statement_timeout` agotado | `Reintentable` → `503 retryable` (R-4.19) |
 | `23505` | Violación de `UNIQUE` | Se propaga con el nombre de la restricción; el caso de uso decide (idempotencia en §6.2, duplicados en §7) |
 | `23514`, `23503`, `P0001` | `CHECK`, FK o trigger | Se propaga. Si llega hasta el manejador sin traducirse, es un `500` y su detalle va solo al log |
+| — | Falla al **obtener la conexión** del pool (base no disponible: `ECONNREFUSED`, timeout de conexión, etc.) | `Reintentable` → `503 retryable` (§7.2). Ningún efecto quedó escrito. Si la falla ocurre después de obtener la conexión, aplica la fila de su `SQLSTATE` |
 
 `40P01` se reintenta porque la transacción completa no dejó efectos. `55P03` y `57014` no se reintentan en el servidor: el tiempo ya se gastó, y el cliente reintenta con la misma llave (D-12, D-16, D-17).
 
@@ -2442,6 +2446,15 @@ Un `500` también se reintenta: no hay forma de saber si la transacción alcanz�
 ### 14.2 Integración contra PostgreSQL
 
 **Preparación.** Un `globalSetup` aplica las migraciones a `billetera_test` con el rol dueño. Cada archivo de pruebas vacía las tablas de datos (`TRUNCATE … CASCADE`, conservando Fondeo) y crea sus usuarios. La API de prueba se conecta como `billetera_app`, igual que en producción, con `RelojFijo` cuando la prueba controla la hora y `ProveedorOtpSimulado`.
+
+**Conexión de las pruebas.** `npm run test:integracion -w api` usa su propia configuración de Vitest (`api/vitest.integracion.config.ts`, solo `test/integracion/**`, archivos en serie). `npm test -w api` no la incluye, así que corre sin base. Las URLs salen de dos variables propias de las pruebas, que **no forman parte del esquema de configuración de la API** (§2.4):
+
+| Variable | Rol | Valor por defecto (base local de `init.sql`) |
+|---|---|---|
+| `PRUEBAS_DATABASE_URL` | `billetera_app` | `postgresql://billetera_app:billetera_app_dev@127.0.0.1:5433/billetera_test` |
+| `PRUEBAS_DATABASE_URL_MIGRACIONES` | `billetera_owner` | `postgresql://billetera_owner:billetera_owner_dev@127.0.0.1:5433/billetera_test` |
+
+En CI se fijan con las del *service container* (§14.5).
 
 **Invariantes después de cada prueba.** Un `afterEach` global verifica, como el rol dueño:
 
