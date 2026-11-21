@@ -1598,7 +1598,7 @@ Los `type` de esta tabla son exactamente el `enum` de `TipoProblema` en `openapi
 > - `title` y `detail` son textos fijos por `type`.
 > - JSON mal formado y cuerpo demasiado grande responden `400 validation-error`, sin `413` ni `type` propios.
 > - Un deadlock que persiste después de 3 reintentos responde `503 retryable`.
-> **Motivo:** decidir por el texto del mensaje rompe con cualquier cambio de versión o de idioma de PostgreSQL. Con textos fijos, ningún dato interno puede viajar por error dentro de `detail`. Mantener el catálogo en 17 `type` hace que cada cliente lo cubra completo con un mapa de textos.
+> **Motivo:** decidir por el texto del mensaje rompe con cualquier cambio de versión o de idioma de PostgreSQL. Con textos fijos, ningún dato interno puede viajar por error dentro de `detail`. Mantener el catálogo en 18 `type` hace que cada cliente lo cubra completo con un mapa de textos.
 
 ---
 
