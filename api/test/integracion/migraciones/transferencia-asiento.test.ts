@@ -10,6 +10,7 @@ import {
   migracionesAplicadas,
   revertirHasta,
 } from '../apoyo/migraciones.js';
+import { truncar } from '../apoyo/limpieza.js';
 
 const MIGRACION = 'TransferenciaAsiento1000000000003';
 const FONDEO_ID = '00000000-0000-0000-0000-000000000001';
@@ -131,6 +132,8 @@ describe('migración TransferenciaAsiento: humo', () => {
 describe('migración TransferenciaAsiento: ida y vuelta', () => {
   it('DD-05: revertir quita tablas, funciones e índices sin tocar Beneficiario, y reaplicar los recrea', async () => {
     expect(await migracionesAplicadas()).toContain(MIGRACION);
+    // Sin datos antes de revertir: borrar asientos sin sus saldos descuadraría la base.
+    await truncar();
     await revertirHasta(MIGRACION);
     expect(await objetos()).toEqual({
       tablas: [null, null, null],

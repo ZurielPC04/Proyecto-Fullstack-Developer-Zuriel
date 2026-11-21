@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { migraciones } from '../../../src/migraciones/index.js';
 import { urlDueno } from '../apoyo/base.js';
 import { aplicarTodas, migracionesAplicadas, revertirTodas } from '../apoyo/migraciones.js';
+import { truncar } from '../apoyo/limpieza.js';
 
 const RAIZ = fileURLToPath(new URL('../../../../', import.meta.url));
 const NOMBRES = migraciones.map((Migracion) => new Migracion().name ?? Migracion.name);
@@ -27,6 +28,8 @@ afterAll(async () => {
 
 describe('migrar.ts', () => {
   it('RNF-16 DD-05: npm run db:migrate en una base sin migraciones aplica todas, en orden, y termina con 0', async () => {
+    // Sin datos antes de revertir: borrar asientos sin sus saldos descuadraría la base.
+    await truncar();
     await revertirTodas();
     expect(await migracionesAplicadas()).toEqual([]);
 

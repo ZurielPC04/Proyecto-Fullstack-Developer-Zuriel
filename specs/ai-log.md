@@ -449,6 +449,25 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-07 y T-API-08):** `c76cead` (abono simétrico de `comprobar_transferencia`), el de T-API-07, `d8ab4ca` (permisos de funciones y humo de `billetera_app`) y el de T-API-08.
 
+### Sesión 18 — 2026-11-21 · Implementación de T-API-09, T-CI-02 y T-API-10 (cierre de la Fase 3)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó §3.3, §3.4, §14.2, §14.5 y las DD indicadas, y propuso un solo plan para las tres tareas. Yo lo aprobé con ajustes antes de que escribiera código. Las decisiones fueron mías en todos los casos.
+
+**Correcciones a los requerimientos (T-API-09):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| T-API-09: la prueba que rompe una invariante corre "en una base desechable" | `billetera_owner` no tiene `CREATEDB` e `init.sql` crea solo `billetera` y `billetera_test`: no hay base desechable | La prueba corre en `billetera_test`, rompe **cada** invariante por separado y deja la base vacía al terminar. Claude Code señaló el hueco (H1); yo lo aprobé |
+| §14.2: el `globalSetup` "aplica las migraciones" | No decía cómo quedaba una base sucia de corridas anteriores. Las pruebas de ida y vuelta de T-API-05 a T-API-08 dejaban cuentas con `saldo ≠ SUM(asientos)` | El `globalSetup` revierte todas las migraciones y migra desde cero. Así deja el esquema exacto y sin datos, y ejercita cada `down`. Claude Code propuso las dos opciones y recomendó esta; yo la elegí |
+| §14.2 no protegía contra una URL equivocada | El `globalSetup` y la limpieza revierten, migran y vacían tablas: con la URL de otra base, borrarían datos reales | El `globalSetup` y `truncar()` se niegan a correr (lanzan antes de tocar nada) si la base de la URL no es exactamente `billetera_test`, con una prueba unitaria de la guarda. La decisión fue mía (ajuste de seguridad al plan) |
+
+**Decisiones de implementación (T-API-09):**
+- La prueba del `afterEach` lanza un archivo de casos rotos como subproceso (`PRUEBAS_FIXTURE=1`), uno por invariante, y espera el fallo con el nombre de esa invariante y no el de las otras. Cada caso desactiva un trigger dentro de su transacción, con el rol dueño. La mutación de quitar una invariante hace que solo su caso deje de fallar. Claude Code diseñó los tres casos; yo pedí que, en ese modo, el `globalSetup` no reconstruyera el esquema mientras el proceso principal tiene la base abierta.
+- Las pruebas de ida y vuelta vacían la base antes de revertir, para que el `afterEach` no falle por saldos sin asientos. Claude Code lo resolvió así cuando el `afterEach` atrapó la de `TransferenciaAsiento`.
+- El validador carga `openapi.yaml` completo en `Ajv2020` con `strict: false`, para que Ajv ignore las palabras propias de OpenAPI (`openapi`, `paths`, `example`…). El documento ya lo valida `redocly lint` en CI (DD-27).
+
+**Commits relacionados (T-API-09):** el `docs(specs)` de la guarda y del `globalSetup` desde cero, y el de T-API-09.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

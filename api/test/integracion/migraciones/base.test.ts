@@ -9,6 +9,7 @@ import {
   migracionesAplicadas,
   revertirHasta,
 } from '../apoyo/migraciones.js';
+import { truncar } from '../apoyo/limpieza.js';
 
 const FONDEO_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -128,6 +129,8 @@ describe('migración Base: ida y vuelta', () => {
       )[0];
 
     expect(await migracionesAplicadas()).toContain('Base1000000000001');
+    // Sin datos antes de revertir: borrar asientos sin sus saldos descuadraría la base.
+    await truncar();
     await revertirHasta('Base1000000000001');
     expect(await objetos()).toEqual({ usuario: null, cuenta: null, funciones: 0 });
 

@@ -5,6 +5,7 @@ import {
   migracionesAplicadas,
   revertirHasta,
 } from '../apoyo/migraciones.js';
+import { truncar } from '../apoyo/limpieza.js';
 
 const MIGRACION = 'Beneficiario1000000000002';
 
@@ -58,6 +59,8 @@ describe('migración Beneficiario', () => {
 
   it('DD-05: ida y vuelta: revertir la quita entera sin tocar Base, y reaplicar la recrea', async () => {
     expect(await migracionesAplicadas()).toContain(MIGRACION);
+    // Sin datos antes de revertir: borrar asientos sin sus saldos descuadraría la base.
+    await truncar();
     await revertirHasta(MIGRACION);
     expect(await objetos()).toEqual({
       tabla: null,

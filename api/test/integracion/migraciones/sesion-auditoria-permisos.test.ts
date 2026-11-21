@@ -10,6 +10,7 @@ import {
   migracionesAplicadas,
   revertirHasta,
 } from '../apoyo/migraciones.js';
+import { truncar } from '../apoyo/limpieza.js';
 
 const PERMISOS = 'Permisos1000000000006';
 const FONDEO_ID = '00000000-0000-0000-0000-000000000001';
@@ -220,6 +221,8 @@ describe('migración Permisos', () => {
 
   it('DD-05: ida y vuelta: revertir Permisos deja a billetera_app sin permisos de tabla, y reaplicar los devuelve', async () => {
     expect(await migracionesAplicadas()).toContain(PERMISOS);
+    // Sin datos antes de revertir: borrar asientos sin sus saldos descuadraría la base.
+    await truncar();
     await revertirHasta(PERMISOS);
     const [sin] = await consultarComoDueno<{ select: boolean; insert: boolean }>(
       `SELECT has_table_privilege($1, 'public.usuario', 'SELECT') AS select,
