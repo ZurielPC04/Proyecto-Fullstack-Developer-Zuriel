@@ -43,7 +43,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 ### 1.4 Reglas de cierre
 
 1. **Las pruebas van dentro de la tarea.** Cada tarea escribe sus pruebas (TDD cuando aplica) y no se cierra con pruebas en rojo. La única tarea solo de pruebas es T-API-21 (concurrencia), que necesita los módulos terminados.
-2. **Los IDs van en el nombre de la prueba** (DD-46, `design.md` §14.4): `it('R-4.14 repetición con la misma llave devuelve el mismo cuerpo', …)`. Así, `npx vitest run -t "R-4.14"` ejecuta las pruebas de un criterio.
+2. **Los IDs van en el nombre de la prueba** (DD-46, `design.md` §14.4): `it('R-4.14 repetición con la misma llave devuelve el mismo cuerpo', …)`. Así, `npm test -w api -- -t "R-4.14"` ejecuta las pruebas de un criterio. Vitest se corre siempre desde el script `test` del workspace, nunca con `npx vitest` desde la raíz: ahí no hay configuración de Vitest, y un `-w` escrito después de `vitest` se lee como `--watch`.
 3. **Cada tarea cierra con uno o más commits** que citan su ID y sus criterios (RNF-33), con Conventional Commits:
    `feat(api): T-API-17 transferencia sin código con bloqueo [R-4.1, R-4.3]`. Si una tarea necesita varios commits, todos citan el mismo `T-` y cada uno los criterios que toca.
 4. **`main` siempre en verde.** Antes de cada commit corren `npm run lint`, `npm run typecheck` y las pruebas del paquete tocado. El CI (T-CI-01 a T-CI-03) lo vuelve a correr.
@@ -282,7 +282,7 @@ flowchart LR
 - **Criterios:** RNF-15, R-6.17 (no arrancar con OTP simulado en producción)
 - **Implementa:** DD-08 (composición manual), §2.4
 - **Alcance:** `config/index.ts` con el esquema Zod de §2.4 y sus reglas cruzadas; `main.ts` (configuración → base de datos → `listen`); `crearApp(dependencias)` sin rutas de negocio todavía. Registra **los nombres** de las variables inválidas, nunca sus valores.
-- **Verificación:** `npx vitest run -w api -t "RNF-15"`: umbral ≥ límite, valores no enteros, `OTP_SIMULADO=true`, `DEMO_LATENCIA_MS > 0` o `FONDEO_BIENVENIDA_CENTAVOS > 0` con `NODE_ENV=production`, `OTP_HMAC_SECRETO = JWT_SECRETO`, booleano `'1'` rechazado; el mensaje no contiene valores.
+- **Verificación:** `npm test -w api -- -t "RNF-15"`: umbral ≥ límite, valores no enteros, `OTP_SIMULADO=true`, `DEMO_LATENCIA_MS > 0` o `FONDEO_BIENVENIDA_CENTAVOS > 0` con `NODE_ENV=production`, `OTP_HMAC_SECRETO = JWT_SECRETO`, booleano `'1'` rechazado; el mensaje no contiene valores.
 - **Commit:** `feat(api): T-API-02 configuración validada al arrancar [RNF-15, R-6.17]`
 
 ### T-API-03 · Middlewares, errores RFC 7807, logs y documentación navegable · `api` · P1
