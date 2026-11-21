@@ -1,3 +1,4 @@
+import type { TipoProblema } from '@billetera/shared';
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import type { Logger } from 'pino';
 import { ZodError } from 'zod';
@@ -14,7 +15,20 @@ function tipoDeErrorDeCuerpo(error: unknown): string | undefined {
   return typeof error.type === 'string' ? error.type : undefined;
 }
 
-/** §7.3, en orden. Sin pg todavía: T-API-04 agrega los SQLSTATE y las restricciones. */
+/** `code` y `constraint` del error de pg; TypeORM los deja en `driverError` (DD-35). */
+function errorDePg(error: unknown): { code?: unknown; constraint?: unknown } {
+  if (typeof error !== 'object' || error === null) return {};
+  const { driverError } = error as { driverError?: unknown };
+  const origen = typeof driverError === 'object' && driverError !== null ? driverError : error;
+  return origen as { code?: unknown; constraint?: unknown };
+}
+
+/** §7.3: restricciones `UNIQUE` que el manejador traduce, por nombre y nunca por mensaje. */
+const UNICAS: Record<string, TipoProblema> = {
+  uq_usuario_correo: 'correo-ya-registrado',
+};
+
+/** §7.3, en orden. */
 function traducir(error: unknown): Problema {
   if (error instanceof ZodError) {
     return crearProblema('validation-error', {
@@ -36,6 +50,10 @@ function traducir(error: unknown): Problema {
     });
   }
   if (error instanceof ErrorDominio) return crearProblema(error.tipo, error.extensiones);
+  const { code, constraint } = errorDePg(error);
+  if (code === '23505' && typeof constraint === 'string' && constraint in UNICAS) {
+    return crearProblema(UNICAS[constraint] as TipoProblema);
+  }
   return crearProblema('internal-error');
 }
 

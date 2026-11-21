@@ -87,7 +87,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 **Fase 4 · Módulos de la API**
 
 - [x] T-API-11 · `api` · P1 · Auditoría y fondeo interno
-- [ ] T-API-12 · `api` · P1 · Registro
+- [x] T-API-12 · `api` · P1 · Registro
 - [ ] T-API-13 · `api` · P1 · Sesión: login, refresh, reúso y logout
 - [ ] T-API-14 · `api` · P1 · Rate limit
 - [ ] T-API-15 · `api` · P1 · Consulta de cuentas

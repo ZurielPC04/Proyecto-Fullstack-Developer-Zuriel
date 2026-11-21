@@ -508,7 +508,16 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - Mutación (a), `fondear` sin `registrarEvento`: roja en la prueba del evento.
 - La primera corrida completa de la integración volvió a terminar con la caída nativa de Windows (`0xC0000409`) en un archivo ajeno; la siguiente, igual, pasó completa.
 
-**Commits relacionados (T-API-11):** el de T-API-11.
+**Commits relacionados (T-API-11):** el de T-API-11. `jose` y `argon2` se agregaron (versiones exactas `6.2.15` y `0.45.2`) en ese mismo commit, aunque los usan T-API-12 y T-API-13.
+
+**T-API-12:** sin correcciones a los requerimientos; la única contradicción era la de mi prompt con DD-19 (arriba). Notas:
+- El hash argon2id se calcula **antes** de abrir la transacción, para no retener una conexión del pool durante ~50 ms de CPU.
+- El `409` sale del `23505` en `uq_usuario_correo`, traducido en `manejadorErrores` por nombre de restricción (§7.3); no hay `SELECT` previo.
+- La prueba del fallo forzado crea, como dueño, un trigger temporal sobre `evento_auditoria` que lanza con `usuario-registrado`, el último paso después de las cuentas y del fondeo. Así no hace falta un gancho de prueba en el código de producción. La preparación es idempotente porque una caída del worker puede saltarse el `finally`.
+- El reintento de CLABE se prueba con un generador inyectado (`crearModuloIdentidad(deps, { generarClabe })`): una CLABE ocupada seguida de dos libres, y cinco ocupadas → `500` sin dejar nada.
+- La caída nativa `0xC0000409` del worker se repitió dos veces más en corridas completas, ahora sin ninguna prueba fallida; la corrida siguiente pasó completa las dos veces. Ya no parece ligada a una prueba en rojo.
+
+**Commits relacionados (T-API-12):** el de T-API-12.
 
 ---
 
