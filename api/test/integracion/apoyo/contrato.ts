@@ -71,7 +71,16 @@ export function validarRespuesta(respuesta: RespuestaHttp, metodo: string, ruta:
       .split(';')[0]
       ?.trim() ?? '';
   if (!contenido) {
-    if (respuesta.body === undefined || respuesta.body === '' || respuesta.body === null) return;
+    // Supertest entrega `{}` cuando la respuesta no trae cuerpo (p. ej. un 204): sin
+    // Content-Type y sin claves, no hay cuerpo.
+    const vacio =
+      respuesta.body === undefined ||
+      respuesta.body === '' ||
+      respuesta.body === null ||
+      (!tipo &&
+        typeof respuesta.body === 'object' &&
+        Object.keys(respuesta.body as object).length === 0);
+    if (vacio) return;
     throw new Error(
       `El contrato no declara cuerpo para ${codigo} en ${metodo.toUpperCase()} ${ruta}`,
     );

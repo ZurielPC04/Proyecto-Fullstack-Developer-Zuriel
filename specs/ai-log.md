@@ -519,6 +519,26 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-12):** el de T-API-12.
 
+**Correcciones a los requerimientos (T-API-13):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| DD-24 y §5.4: "con cookie, el refresh y el logout exigen `X-Requested-With: fetch`" | No decía qué responde la API si falta. R-1.16 solo dice "rechazarla" | `400 validation-error` con el campo `headers.x-requested-with`, sin buscar ni tocar la sesión. Claude Code señaló el hueco y propuso el `400`; yo lo aprobé |
+| DD-24: "si llegan los dos, o ninguno en el refresh, responden `400`" | Ambiguo para el logout sin refresh, y sin campo | Los dos canales a la vez → `400` en `body.refreshToken`; ninguno → `400` en el refresh y `204` en el logout |
+| DD-07: `DEFAULT now()` como red "para tablas sin reglas de tiempo (sesión, auditoría)" | La sesión sí tiene una regla de tiempo (`expira_en <= ahora`), y con `now()` la familia vencida solo se podía probar escribiendo como dueño | §5.3: el `ahora` de la sesión sale de `Reloj.ahora(tx)`. El login escribe `creado_en` y `expira_en = ahora + 7 días`, y el `Max-Age` de la cookie se calcula en SQL. La prueba de DD-30 usa `RelojFijo` |
+
+**Decisiones de implementación (T-API-13):**
+- `Max-Age` usa `ceil` de los segundos que faltan: a medio segundo del vencimiento la cookie sigue viva 1 s en vez de borrarse con `Max-Age=0`. El servidor rechaza igual con `expira_en <= ahora`.
+- El hash ficticio es una promesa que se lanza al construir el módulo identidad. La prueba lo comprueba contando los `hash` antes del primer login, y la mutación (b) contando las verificaciones, no por tiempo.
+- El access no es una marca de negocio: su `iat`/`exp` salen del reloj del proceso (jose), y `accessExpiraEn` se deriva de `exp`.
+- Para validar con Ajv el `401` y el `200` de `autenticar`, la ruta protegida de prueba tiene la forma de `GET /cuentas` (`{ items: [] }`).
+- El validador del contrato trataba como cuerpo el `{}` que Supertest entrega en un `204`; ahora un `{}` sin `Content-Type` cuenta como ausencia de cuerpo.
+- Mutaciones, todas rojas: (b) login sin el hash ficticio, por el conteo de verificaciones; (c) reúso sin revocar, porque la familia queda viva; (d) cookie sin `HttpOnly` y, por separado, con `SameSite=Lax`, en las tres pruebas de la cookie; (e) `jwtVerify` sin `algorithms`, por el token HS512.
+
+**Caídas del worker (`0xC0000409`):** en esta sesión fueron cada vez más frecuentes en las corridas completas, en archivos distintos, sin ninguna prueba fallida. Al final de T-API-13 la máquina tenía 1.7 GB libres de 16 GB. En Windows, `abort()` termina con `0xC0000409`, lo que apunta a Node abortando por falta de memoria más que a un defecto del código. La suite completa pasó dos de dos veces con `--pool=threads`. Con la configuración real (`forks`) se verificó en dos mitades: 20 archivos y 162 pruebas en verde. No cambié la configuración de Vitest porque ninguna tarea lo cubre; queda como propuesta.
+
+**Commits relacionados (T-API-13):** `2baca95` (`X-Requested-With`, canales del refresh y el `Reloj` en la sesión) y el de T-API-13.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

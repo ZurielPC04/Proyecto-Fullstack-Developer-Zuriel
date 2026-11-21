@@ -2,6 +2,7 @@ import type { Router } from 'express';
 import type { DependenciasApp } from '../../app.js';
 import { crearConTransaccion } from '../../plataforma/db/unidad-de-trabajo.js';
 import { contrasenasArgon2, type Contrasenas } from '../../plataforma/seguridad/contrasenas.js';
+import { crearTokens } from '../../plataforma/seguridad/tokens.js';
 import { generarClabeAleatoria, type GenerarClabe } from '../cuentas/cuentas.casos-uso.js';
 import { crearTransferencias } from '../transferencias/transferencias.casos-uso.js';
 import { crearCasosUsoIdentidad } from './identidad.casos-uso.js';
@@ -25,6 +26,9 @@ export function crearModuloIdentidad(
     contrasenas: opciones.contrasenas ?? contrasenasArgon2,
     transferencias: crearTransferencias({ reloj }),
     generarClabe: opciones.generarClabe ?? generarClabeAleatoria,
+    tokens: crearTokens(config.JWT_SECRETO),
+    reloj,
+    logger,
     fondeoBienvenidaCentavos: config.FONDEO_BIENVENIDA_CENTAVOS,
   });
   return rutasIdentidad(crearControladorIdentidad(casos));

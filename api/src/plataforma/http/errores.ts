@@ -28,6 +28,20 @@ export class ValidacionFallida extends ErrorDominio {
   }
 }
 
+/** `401 unauthorized`: access o refresh inválido, el mismo problem para cualquier causa (R-1.10, R-1.11). */
+export class NoAutenticado extends ErrorDominio {
+  constructor(opciones?: ErrorOptions) {
+    super('unauthorized', {}, opciones);
+  }
+}
+
+/** `401 credenciales-invalidas`: correo inexistente o contraseña incorrecta, sin distinguirlos (R-1.7). */
+export class CredencialesInvalidas extends ErrorDominio {
+  constructor(opciones?: ErrorOptions) {
+    super('credenciales-invalidas', {}, opciones);
+  }
+}
+
 /** `503 retryable` con `Retry-After: 1` (DD-10, §10.3). */
 export class Reintentable extends ErrorDominio {
   constructor(opciones?: ErrorOptions) {
