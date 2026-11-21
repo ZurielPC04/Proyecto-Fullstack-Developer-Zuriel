@@ -1,7 +1,35 @@
 import { randomInt } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
+import type { ConTransaccion } from '../../plataforma/db/unidad-de-trabajo.js';
+import { NoEncontrado } from '../../plataforma/http/errores.js';
 import { clabeDeUsuario } from './cuentas.dominio.js';
-import { insertarCuentaSiClabeLibre } from './cuentas.repositorio.js';
+import {
+  buscarCuentaDeUsuario,
+  insertarCuentaSiClabeLibre,
+  listarCuentasDeUsuario,
+  type CuentaPropia,
+} from './cuentas.repositorio.js';
+
+export type { CuentaPropia };
+
+/** HU-2: consulta de las cuentas propias; siempre por el `usuarioId` autenticado. */
+export function crearConsultasCuentas({ conTransaccion }: { conTransaccion: ConTransaccion }) {
+  return {
+    /** R-2.1, R-2.3. */
+    listar(usuarioId: string): Promise<CuentaPropia[]> {
+      return conTransaccion((tx) => listarCuentasDeUsuario(tx, usuarioId));
+    },
+
+    /** R-2.4 y D-10: ajena o inexistente lanzan el mismo `NoEncontrado`. */
+    async obtener(usuarioId: string, cuentaId: string): Promise<CuentaPropia> {
+      const cuenta = await conTransaccion((tx) => buscarCuentaDeUsuario(tx, usuarioId, cuentaId));
+      if (!cuenta) throw new NoEncontrado();
+      return cuenta;
+    },
+  };
+}
+
+export type ConsultasCuentas = ReturnType<typeof crearConsultasCuentas>;
 
 /** Fuente de CLABEs; las pruebas la sustituyen para forzar colisiones (DD-19). */
 export type GenerarClabe = () => string;

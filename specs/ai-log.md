@@ -567,6 +567,22 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-14):** `c9aee46` (§11) y el de T-API-14.
 
+**Correcciones a los requerimientos (T-API-15):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §4.2 y `openapi.yaml`: `GET /cuentas` lista "las cuentas del usuario" | No fijaba el orden, y los clientes muestran primero la `Principal` | `Principal` y después `Ahorro` (H3), en §4.2 y en la descripción de la operación; se regeneraron los tipos de `shared` |
+
+**Decisiones de implementación (T-API-15):**
+- El repositorio filtra siempre por `usuario_id = $1 AND tipo = 'USUARIO'`. La segunda condición deja fuera a Fondeo aunque el filtro por dueño se rompiera.
+- `autenticar` va en cada ruta del módulo y no con `router.use`: así una ruta que no es de cuentas no recibe un `401` en lugar de su `404`.
+- `shared` ahora exporta `uuid()` (§6.7), para que `params.cuentaId` use la misma regla que `format: uuid` del contrato.
+- Las consultas corren dentro de `conTransaccion` para heredar `statement_timeout` y la traducción de errores a `503` (§2.3).
+- Mutación (c), quitar el filtro por usuario: roja. La primera versión, que quitaba también `tipo = 'USUARIO'`, la detectaba Ajv por Fondeo (saldo negativo y nombre fuera del enum). Para probar que la cuenta ajena basta, se repitió conservando `tipo = 'USUARIO'`, y la detectó la comparación exacta de la lista.
+- Una corrida de un solo archivo cayó con `0xC0000409`, también con hilos y sin nada en paralelo; la repetición pasó. La caída sigue siendo intermitente.
+
+**Commits relacionados (T-API-15):** `bcc2d37` (orden de las cuentas) y el de T-API-15.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
