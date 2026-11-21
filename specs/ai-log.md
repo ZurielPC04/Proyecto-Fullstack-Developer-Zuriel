@@ -429,6 +429,14 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **T-API-06:** sin correcciones a los requerimientos. §3.2, §3.3 y DD-16 coinciden para `beneficiario`. La migración aplica las convenciones ya corregidas en T-API-05: nombres de §7.3, `CONSTRAINT` en el `RAISE` de `validar_beneficiario` y `DEFAULT gen_random_uuid()`.
 
+**Corrección a los requerimientos (T-API-07):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §3.3: `comprobar_transferencia(p_id)` en resumen, con "… simétrico para el abono en destino" | La mitad de la verificación diferida quedaba sin especificar, y la función no sabía qué trigger reportar como `constraint` (§7.3) | §3.3 escribe el abono completo (destino, `+monto`, `DEPOSITO`/`RECEPCION`/`TRASPASO_ENTRADA`, `creado_en = aplicada_en`) y la firma `comprobar_transferencia(p_id uuid, p_trigger text)`, que usa `p_trigger` como `CONSTRAINT`. Claude Code lo señaló (H6 del plan); yo lo aprobé |
+
+**Decisión de implementación (T-API-07):** en `validar_transferencia`, las reglas se evalúan con `IS NOT TRUE`. Un trigger `BEFORE` corre antes que los `CHECK`, así que un `usuario_id` nulo en un `TRASPASO` daría `NULL` en la comparación; con `IS NOT TRUE` se rechaza igual que un `false`. Las cuentas o el beneficiario inexistentes los rechaza su FK.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

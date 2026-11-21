@@ -78,7 +78,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 
 - [x] T-API-05 · `api` · P1 · Migración 1 `Base`
 - [x] T-API-06 · `api` · P1 · Migración 2 `Beneficiario`
-- [ ] T-API-07 · `api` · P1 · Migración 3 `TransferenciaAsiento`
+- [x] T-API-07 · `api` · P1 · Migración 3 `TransferenciaAsiento`
 - [ ] T-API-08 · `api` · P1 · Migraciones 4 a 6: `Sesion`, `Auditoria`, `Permisos`
 - [ ] T-API-09 · `api` · P1 · Arnés de pruebas de integración
 - [ ] T-CI-02 · `ci` · P1 · Job `integracion`
