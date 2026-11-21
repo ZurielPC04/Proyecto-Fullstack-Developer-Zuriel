@@ -31,6 +31,7 @@ function dobles(env: Record<string, string | undefined>) {
     conectarBase: async () => {
       llamadas.push('conectarBase');
     },
+    verificarBase: async () => {},
     escuchar: async (_app: unknown, puerto: number) => {
       llamadas.push(`escuchar:${puerto}`);
     },

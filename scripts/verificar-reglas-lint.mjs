@@ -1,6 +1,7 @@
-// T-SHR-04 (DD-42): demuestra que cada regla de lint del dinero y de AsyncStorage
-// reporta su patrón en las rutas donde aplica, y solo en ellas. Revisa los archivos
-// de eslint-pruebas/ con la configuración real, como si vivieran en cada ruta.
+// T-SHR-04 (DD-42) y T-API-03 (DD-08): demuestra que cada regla de lint del dinero, de
+// AsyncStorage y de las capas de la API reporta su patrón en las rutas donde aplica, y
+// solo en ellas. Revisa los archivos de eslint-pruebas/ con la configuración real, como si
+// vivieran en cada ruta y con el nombre `nombre` cuando la regla depende de él.
 import { readFile } from 'node:fs/promises';
 import { ESLint } from 'eslint';
 
@@ -14,13 +15,32 @@ const REGLAS = new Set([
 const CASOS = [
   {
     archivo: 'eslint-pruebas/dinero.invalido.ts',
-    aplica: ['packages/shared/src', 'web/src', 'mobile/src'],
-    noAplica: ['api/src'],
+    // DD-42, ampliada en T-API-03: también en api, código y pruebas.
+    aplica: ['packages/shared/src', 'web/src', 'mobile/src', 'api/src', 'api/test'],
+    noAplica: ['scripts'],
   },
   {
     archivo: 'eslint-pruebas/almacenamiento.invalido.ts',
     aplica: ['mobile/src'],
-    noAplica: ['packages/shared/src', 'web/src'],
+    noAplica: ['packages/shared/src', 'web/src', 'api/src'],
+  },
+  {
+    archivo: 'eslint-pruebas/capas.controlador.invalido.ts',
+    nombre: 'cuentas.controlador.ts',
+    aplica: ['api/src/modulos/cuentas'],
+    noAplica: ['web/src'],
+  },
+  {
+    archivo: 'eslint-pruebas/capas.casos-uso.invalido.ts',
+    nombre: 'cuentas.casos-uso.ts',
+    aplica: ['api/src/modulos/cuentas'],
+    noAplica: ['web/src'],
+  },
+  {
+    archivo: 'eslint-pruebas/capas.dominio.invalido.ts',
+    nombre: 'cuentas.dominio.ts',
+    aplica: ['api/src/modulos/cuentas'],
+    noAplica: ['web/src'],
   },
 ];
 
@@ -32,7 +52,7 @@ function reportar(ok, texto) {
   if (!ok) fallas++;
 }
 
-for (const { archivo, aplica, noAplica } of CASOS) {
+for (const { archivo, nombre: nombreDestino, aplica, noAplica } of CASOS) {
   const codigo = await readFile(archivo, 'utf8');
   const lineas = codigo.split('\n').map((texto, i) => ({
     numero: i + 1,
@@ -40,7 +60,7 @@ for (const { archivo, aplica, noAplica } of CASOS) {
     espera: /\/\/ espera: (\S+)/.exec(texto)?.[1],
     valido: /\/\/ válido\s*$/.test(texto),
   }));
-  const nombre = archivo.split('/').pop();
+  const nombre = nombreDestino ?? archivo.split('/').pop();
 
   for (const ruta of [...aplica, ...noAplica]) {
     const debeReportar = aplica.includes(ruta);
@@ -68,6 +88,8 @@ for (const { archivo, aplica, noAplica } of CASOS) {
 }
 
 console.log(
-  fallas === 0 ? '\nTodas las reglas de DD-42 funcionan.' : `\n${fallas} verificaciones fallaron.`,
+  fallas === 0
+    ? '\nTodas las reglas de DD-42 y DD-08 funcionan.'
+    : `\n${fallas} verificaciones fallaron.`,
 );
 process.exit(fallas === 0 ? 0 : 1);

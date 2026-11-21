@@ -2,6 +2,7 @@ import type { Express } from 'express';
 import type { Logger } from 'pino';
 import { crearApp } from './app.js';
 import { cargarConfiguracion, type Config } from './config/index.js';
+import { crearModulos } from './modulos/index.js';
 
 export interface DependenciasArranque {
   env: Record<string, string | undefined>;
@@ -9,12 +10,14 @@ export interface DependenciasArranque {
   /** Recibe `process` en main.ts; las pruebas pasan un objeto propio. */
   proceso: { exitCode?: number | string | null | undefined };
   conectarBase: (config: Config) => Promise<void>;
+  /** §10.3: la usa GET /api/health. */
+  verificarBase: () => Promise<void>;
   escuchar: (app: Express, puerto: number) => Promise<unknown>;
 }
 
 /** design.md §2.4: configuración → base de datos → listen. */
 export async function arrancar(dependencias: DependenciasArranque): Promise<void> {
-  const { env, logger, proceso, conectarBase, escuchar } = dependencias;
+  const { env, logger, proceso, conectarBase, verificarBase, escuchar } = dependencias;
 
   const resultado = cargarConfiguracion(env);
   if (!resultado.ok) {
@@ -27,5 +30,7 @@ export async function arrancar(dependencias: DependenciasArranque): Promise<void
   const { config } = resultado;
   logger.level = config.LOG_LEVEL;
   await conectarBase(config);
-  await escuchar(crearApp({ config, logger }), config.PORT);
+  // DD-08: los routers reales salen de crearModulos, en un solo lugar.
+  const dependenciasApp = { config, logger, verificarBase };
+  await escuchar(crearApp(dependenciasApp, crearModulos(dependenciasApp)), config.PORT);
 }

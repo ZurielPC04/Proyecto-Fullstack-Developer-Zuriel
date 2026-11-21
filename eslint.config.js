@@ -8,6 +8,14 @@ import tseslint from 'typescript-eslint';
 const SIN_REDONDEO =
   'D-18/DD-42: los montos son centavos enteros; usa montoTextoACentavos o formatearMXN de @billetera/shared.';
 
+// DD-08 (design.md §2.1): mensajes de la regla de capas de la API.
+const CAPAS_CONTROLADOR =
+  'DD-08: un controlador no importa repositorios, entidades, typeorm ni pg; llama a un caso de uso.';
+const CAPAS_CASOS_USO =
+  'DD-08: un caso de uso no importa express ni conoce rutas ni controladores.';
+const CAPAS_DOMINIO =
+  'DD-08: el dominio son reglas puras: sin typeorm, pg, express, repositorios ni entidades.';
+
 export default defineConfig(
   // eslint-pruebas/ contiene a propósito código prohibido; lo revisa `npm run lint:verificar-reglas`.
   // packages/shared/src/api/openapi.ts lo genera `npm run gen:tipos` (design.md §4.3).
@@ -22,7 +30,8 @@ export default defineConfig(
   tseslint.configs.recommended,
   {
     name: 'billetera/dinero',
-    files: ['packages/shared/**', 'web/**', 'mobile/**'],
+    // DD-42, ampliada en T-API-03 a api/**. Excepción solo en la línea, con su motivo.
+    files: ['packages/shared/**', 'web/**', 'mobile/**', 'api/**'],
     rules: {
       'no-restricted-globals': ['error', { name: 'parseFloat', message: SIN_REDONDEO }],
       'no-restricted-properties': [
@@ -62,6 +71,52 @@ export default defineConfig(
               message:
                 'RNF-20/DD-42: tokens e intentos solo en expo-secure-store; nunca AsyncStorage.',
             },
+          ],
+        },
+      ],
+    },
+  },
+  // DD-08 (design.md §2.1): la columna "No puede" de cada capa, como verificación automática.
+  {
+    name: 'billetera/capas-controlador',
+    files: ['api/src/modulos/**/*.controlador.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { regex: '\\.(repositorio|entidad)(\\.js)?$', message: CAPAS_CONTROLADOR },
+            { regex: '^(typeorm|pg)(/|$)', message: CAPAS_CONTROLADOR },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    name: 'billetera/capas-casos-uso',
+    files: ['api/src/modulos/**/*.casos-uso.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { regex: '^express(/|$)', message: CAPAS_CASOS_USO },
+            { regex: '\\.(controlador|rutas)(\\.js)?$', message: CAPAS_CASOS_USO },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    name: 'billetera/capas-dominio',
+    files: ['api/src/modulos/**/*.dominio.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { regex: '^(typeorm|pg|express)(/|$)', message: CAPAS_DOMINIO },
+            { regex: '\\.(repositorio|entidad)(\\.js)?$', message: CAPAS_DOMINIO },
           ],
         },
       ],

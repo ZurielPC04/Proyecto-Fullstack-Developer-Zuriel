@@ -366,6 +366,26 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `5728c50` (§1.2 y §2.4), `97862a2` (verificación con el script del workspace) y el de T-API-02.
 
+### Sesión 15 — 2026-11-20 · Implementación de T-API-03 (middlewares, problemas RFC 7807, logs y documentación navegable)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó las specs y propuso un plan con sus seams y una lista de huecos, y yo lo aprobé con ajustes una sola vez antes de que escribiera código. Las decisiones fueron mías en todos los casos.
+
+**Correcciones a los requerimientos:**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| DD-42 y §13.1: las reglas de dinero aplican en `web`, `mobile` y `shared` | La API, donde viven los casos de uso que mueven dinero, quedaba fuera de la regla que prohíbe redondear | DD-42 y §13.1 extienden las reglas a `api/**`, código y pruebas. Una excepción solo se admite en la línea, con `eslint-disable-next-line` y el motivo. Claude Code señaló en la sesión 14 que `api/**` no estaba cubierta; yo decidí extender las reglas en esta tarea |
+| §10.1: las propiedades sensibles se censuran con las rutas `*.campo` y `*.*.campo` | En pino, `*` exige un nivel de anidación: `logger.info({ contrasena })` salía en claro. Claude Code lo midió con pino 10.4.0 (los niveles 1 y 2 se censuran; el superior y el 3, no) | Cada campo lleva tres rutas: `campo`, `*.campo` y `*.*.campo`. Claude Code detectó el hueco y propuso la ruta simple; yo la aprobé. Una prueba censura cada uno de los 8 campos en los tres niveles |
+| §7.1: "`title` es fijo por `type`", sin tabla de títulos; `detail` "texto fijo en español", sin decir cuál | Cada implementación habría inventado sus títulos, y el texto de `detail` podía separarse del que muestran los clientes | §7.2 fija el `title` de los 18 `type`, y `detail` es `mensajeDeProblema(type)` de `shared`, una sola fuente para la API, la web y el móvil. Claude Code señaló el hueco y propuso los títulos y la fuente de `detail`; yo los aprobé |
+| §2.2 y DD-09: el `X-Request-Id` entrante se acepta "si es un UUID" | No decía qué forma de UUID ni qué hacer con las mayúsculas | Se acepta la forma 8-4-4-4-12 hexadecimal sin distinguir mayúsculas ni exigir versión, y se devuelve y registra en minúsculas; cualquier otro texto se reemplaza por `crypto.randomUUID()`. Claude Code propuso aceptar solo minúsculas, como §6.7; yo decidí aceptar mayúsculas y normalizarlas |
+| §10.3: `GET /api/health` ejecuta `SELECT 1`, pero la base llega en T-API-04 | La salud no se podía implementar ni probar en esta tarea | `crearApp` recibe `verificarBase()`: `200 {"estado":"ok"}` si resuelve y `503 retryable` con `Retry-After: 1` si lanza; T-API-04 la implementa con `SELECT 1`. Claude Code lo propuso; yo lo aprobé |
+| DD-08: `crearApp(dependencias)` recibe sus dependencias, sin decir dónde se arman los routers de negocio ni cómo las pruebas inyectan los suyos | Sin un lugar único, la composición podía repartirse entre `main.ts` y cada módulo | DD-08: `crearApp(dependencias, modulos)`. Los routers reales salen de una sola función, `crearModulos(dependencias)` en `modulos/index.ts`, y el segundo parámetro es donde las pruebas inyectan routers. Claude Code propuso el segundo parámetro; yo decidí la función única `crearModulos` |
+
+**Otros huecos:**
+- DD-35 decía "17 `type`", pero el catálogo tiene 18 desde que T-SHR-05 agregó `credenciales-invalidas`. Claude Code lo señaló; yo decidí corregirlo en su propio commit.
+
+**Commits relacionados:** `d4eba0f` (DD-42 en `api`), `c117962` (redact, títulos, request ID, salud y `crearModulos`), `6cfb5cc` (DD-35 con 18 `type`) y el de T-API-03.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
