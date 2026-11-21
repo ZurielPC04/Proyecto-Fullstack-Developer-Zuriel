@@ -21,6 +21,9 @@ export function crearDataSource({ url, poolMax }: OpcionesDataSource): DataSourc
     url,
     synchronize: false,
     migrationsRun: false,
+    // DD-05: solo las migraciones cambian el esquema. Sin esto, TypeORM ejecuta
+    // CREATE EXTENSION "uuid-ossp" al inicializar; los uuid salen de gen_random_uuid() (DD-11).
+    installExtensions: false,
     entities: entidades,
     migrations: migraciones,
     migrationsTableName: 'migracion',

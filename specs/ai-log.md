@@ -437,6 +437,18 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Decisión de implementación (T-API-07):** en `validar_transferencia`, las reglas se evalúan con `IS NOT TRUE`. Un trigger `BEFORE` corre antes que los `CHECK`, así que un `usuario_id` nulo en un `TRASPASO` daría `NULL` en la comparación; con `IS NOT TRUE` se rechaza igual que un `false`. Las cuentas o el beneficiario inexistentes los rechaza su FK.
 
+**Corrección a los requerimientos (T-API-08):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §3.4 y T-API-08: "`REVOKE ALL … FROM PUBLIC`" y `REVOKE EXECUTE` solo para las funciones `SECURITY DEFINER` | No decía sobre qué objetos. PostgreSQL revisa `EXECUTE` al evaluar un `CHECK` y al llamar una función desde otra: revocar todo a `PUBLIC` sin conceder nada dejaba a `billetera_app` sin poder insertar cuentas (`clabe_valida`) ni pasar la verificación diferida (`comprobar_transferencia`) | §3.4: `REVOKE` a `PUBLIC` de tablas, secuencias y funciones, y `GRANT EXECUTE` a `billetera_app` solo sobre `clabe_valida` y `comprobar_transferencia`. Una prueba de humo como `billetera_app` registra usuario y cuenta, toma los bloqueos, aplica un `FONDEO` y escribe sesión y auditoría. Claude Code señaló el riesgo y propuso la regla (H5); yo la aprobé y agregué una prueba de que `billetera_app` no puede invocar `aplicar_asiento` (`42501`), con la mutación de concederle `EXECUTE` |
+
+**Hallazgos y decisiones de implementación (T-API-08):**
+- **TypeORM instalaba `uuid-ossp` por su cuenta.** Al inicializar un `DataSource` con entidades que usan `@PrimaryGeneratedColumn('uuid')`, TypeORM ejecuta `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`, un cambio de esquema fuera de las migraciones (DD-05). Claude Code lo detectó cuando la prueba de `EXECUTE` listó las funciones `uuid_generate_*` en `public` de `billetera_test`. Claude Code aplicó `installExtensions: false` y borró la extensión. Yo pedí además corregir la causa: los `id` se declaran con `@PrimaryColumn({ type: 'uuid' })`, porque el `DEFAULT gen_random_uuid()` lo pone la base (DD-11), y una prueba de integración verifica que, después de inicializar el `DataSource` y correr las migraciones, `pg_extension` no contiene `uuid-ossp`. Con la causa restaurada a propósito, esa prueba falla.
+- **`Permisos` parte de cero también para `billetera_app`.** La mutación que le concedía `EXECUTE` sobre `aplicar_asiento` dejó esa concesión en la base después de revertir, porque el `up` limpio solo revocaba a `PUBLIC`. El `up` ahora revoca todo a `billetera_app` antes de los `GRANT`, así que el resultado siempre son exactamente los permisos de §3.4. Claude Code lo detectó al correr la suite después de la mutación y lo corrigió siguiendo §3.4.
+
+**Commits relacionados (T-API-07 y T-API-08):** `c76cead` (abono simétrico de `comprobar_transferencia`), el de T-API-07, `d8ab4ca` (permisos de funciones y humo de `billetera_app`) y el de T-API-08.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

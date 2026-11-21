@@ -1,10 +1,10 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
-import { columnaInstante } from '../../plataforma/db/columnas.js';
+import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { columnaInstante, ID_GENERADO_EN_LA_BASE } from '../../plataforma/db/columnas.js';
 
 /** design.md §3.2 `cuenta`. Cada @Column declara su type: no hay emitDecoratorMetadata. */
 @Entity({ name: 'cuenta' })
 export class Cuenta {
-  @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'pk_cuenta' })
+  @PrimaryColumn({ ...ID_GENERADO_EN_LA_BASE, primaryKeyConstraintName: 'pk_cuenta' })
   id!: string;
 
   /** NULL solo en la cuenta de sistema (Fondeo). */

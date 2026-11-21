@@ -1,6 +1,6 @@
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { abrirDataSource } from '../apoyo/base.js';
+import { abrirDataSource, urlDueno } from '../apoyo/base.js';
 
 let dataSource: DataSource;
 
@@ -57,5 +57,21 @@ describe('crearDataSource: parsers de pg', () => {
     expect(dataSource.options.synchronize).toBe(false);
     expect(dataSource.options.migrationsTableName).toBe('migracion');
     expect(dataSource.options.migrationsTransactionMode).toBe('each');
+  });
+
+  // DD-05: solo las migraciones cambian el esquema. TypeORM instala por su cuenta "uuid-ossp"
+  // al inicializar si una entidad usa @PrimaryGeneratedColumn('uuid'); los uuid los genera
+  // gen_random_uuid() del núcleo (DD-11), así que no hace falta ninguna extensión.
+  it('DD-05 RNF-16: inicializar el DataSource y correr las migraciones no instala uuid-ossp ni otras extensiones', async () => {
+    const dueno = await abrirDataSource(urlDueno(), 1);
+    try {
+      await dueno.runMigrations({ transaction: 'each' });
+      const filas = (await dueno.query(
+        "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql' ORDER BY extname",
+      )) as { extname: string }[];
+      expect(filas).toEqual([]);
+    } finally {
+      await dueno.destroy();
+    }
   });
 });
