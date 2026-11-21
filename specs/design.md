@@ -900,7 +900,18 @@ Cada fila de esta tabla tiene una prueba de integración que intenta violarla co
 
 **Bloquear sin poder modificar.** PostgreSQL exige `UPDATE` sobre al menos una columna para `SELECT … FOR UPDATE`. A `usuario` y `cuenta` se les concede `UPDATE (id)`, que los triggers de protección hacen inútil para modificar: cambiar el `id` falla en `cuenta_protegida` y en las FK. En `cuenta` falta a propósito `saldo_centavos`, tanto en `INSERT` como en `UPDATE`: la API no puede crear una cuenta con saldo ni cambiarlo.
 
-**`SECURITY DEFINER`.** `aplicar_asiento` es hoy la única función `SECURITY DEFINER` y la única que actualiza `cuenta.saldo_centavos`. Corre con los permisos de `billetera_owner`. Es una función de trigger, así que no se puede invocar directamente.
+**Qué revoca y qué concede la migración `Permisos`.**
+
+- `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC` y lo mismo para las secuencias. Después, los `GRANT` de la tabla anterior.
+- `REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC`. Después, `GRANT EXECUTE` a `billetera_app` **solo** sobre dos funciones, porque PostgreSQL revisa `EXECUTE` al evaluar un `CHECK` y al llamar una función desde otra:
+  - `clabe_valida(text)`, que evalúan los `CHECK` de `cuenta` y `beneficiario`;
+  - `comprobar_transferencia(uuid, text)`, que llaman los triggers diferidos con los permisos de quien inserta.
+- Las funciones de trigger quedan sin `EXECUTE` para `billetera_app`: disparar un trigger no lo exige.
+- Las columnas `GENERATED ALWAYS AS IDENTITY` (`asiento.id`, `evento_auditoria.id`) no necesitan permiso sobre su secuencia.
+- Una migración posterior que cree una función repite el `REVOKE EXECUTE … FROM PUBLIC` y concede lo que haga falta, igual que con las tablas.
+- **Prueba de humo como `billetera_app`:** registra un usuario con su cuenta y aplica un `FONDEO` completo. Comprueba que los permisos no rompen el camino real.
+
+**`SECURITY DEFINER`.** `aplicar_asiento` es hoy la única función `SECURITY DEFINER` y la única que actualiza `cuenta.saldo_centavos`. Corre con los permisos de `billetera_owner`. Es una función de trigger, así que no se puede invocar directamente. Además, `billetera_app` no tiene `EXECUTE` sobre ella: una llamada directa falla con `42501` antes de llegar a la función. Una prueba lo verifica.
 
 **Regla para toda función `SECURITY DEFINER`, presente o futura:** fija `SET search_path = pg_catalog, public, pg_temp` en su definición, para que nadie pueda suplantar una tabla, función u operador creando un objeto con el mismo nombre en otro esquema.
 
