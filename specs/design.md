@@ -128,6 +128,7 @@ billetera/
 │   │   │   ├── reloj/          # puerto Reloj (§2.1)
 │   │   │   └── otp/            # puerto ProveedorOtp (§2.1)
 │   │   ├── modulos/
+│   │   │   ├── index.ts        # crearModulos(dependencias): routers reales (DD-08)
 │   │   │   ├── identidad/
 │   │   │   ├── cuentas/
 │   │   │   ├── beneficiarios/
@@ -317,7 +318,10 @@ interface ProveedorOtp {
 > **DD-08 · Aprobada · Capas con regla de imports y composición manual**
 > **Contexto:** el enunciado pide capas o módulos y la lógica financiera fuera de los handlers, pero no dice cómo hacerlo verificable.
 > **Opciones:** contenedor de inyección de dependencias (`tsyringe`, `inversify`) o composición manual en `app.ts`.
-> **Decisión:** composición manual. `crearApp(dependencias)` recibe `DataSource`, `Reloj`, `ProveedorOtp`, `Config` y `Logger`, y las pruebas pasan sus dobles. La separación de capas se verifica con `no-restricted-imports` en ESLint, que corre en CI.
+> **Decisión:** composición manual.
+> - `crearApp(dependencias, modulos)` recibe en `dependencias` `Config`, `Logger` y `verificarBase` (desde T-API-03), y `DataSource`, `Reloj` y `ProveedorOtp` (desde T-API-04). Las pruebas pasan sus dobles.
+> - Los routers reales los arma una sola función, `crearModulos(dependencias)` en `modulos/index.ts`: la composición vive en un solo lugar. `arrancar` llama `crearApp(dependencias, crearModulos(dependencias))`.
+> - El segundo parámetro, `modulos`, es el punto donde las pruebas inyectan sus propios routers. `crearApp` los monta entre los middlewares 7 y 12 de §2.2. La separación de capas se verifica con `no-restricted-imports` en ESLint, que corre en CI.
 > **Motivo:** son ocho módulos; un contenedor agrega decoradores y metadatos sin resolver nada que una función no resuelva. La regla de lint convierte "la lógica no vive en los handlers" en una verificación automática.
 
 ### 2.2 Ciclo de vida de una petición
@@ -326,7 +330,7 @@ Orden de los middlewares en `app.ts`:
 
 | # | Middleware | Responsabilidad | Requisitos |
 |---|---|---|---|
-| 1 | `requestId` | Toma `X-Request-Id` entrante si es un UUID; si no, genera uno. Lo devuelve en el header de respuesta | RNF-12 |
+| 1 | `requestId` | Toma `X-Request-Id` entrante si tiene forma de UUID (8-4-4-4-12 hexadecimal, sin distinguir mayúsculas ni exigir versión) y lo pasa a minúsculas; cualquier otro texto se reemplaza por `crypto.randomUUID()`. Lo devuelve en el header de respuesta y abre el `AsyncLocalStorage` de §10.1 | RNF-12 |
 | 2 | `pino-http` | Log JSON de entrada y salida con `reqId`, con `redact` (§10) | RNF-12 |
 | 3 | `helmet` | Headers de seguridad | RNF-05 |
 | 4 | `cors` | Solo `WEB_ORIGIN`, `credentials: true` | RNF-05 |
@@ -345,7 +349,7 @@ Orden de los middlewares en `app.ts`:
 > **DD-09 · Aprobada · El request ID viaja en el header, no en el cuerpo del problem**
 > **Contexto:** es útil correlacionar un error con su línea de log, pero R-4.14 exige que la repetición con la misma llave devuelva **el mismo cuerpo** que la primera vez, incluidos los `422` de negocio.
 > **Opciones:** (1) campo de extensión `requestId` en cada problem; (2) solo el header `X-Request-Id`.
-> **Decisión:** el request ID va solo en el header `X-Request-Id` de todas las respuestas. Se acepta uno entrante con formato UUID para correlacionar con el cliente; si no tiene ese formato, se genera uno nuevo, para que el log no acepte texto arbitrario.
+> **Decisión:** el request ID va solo en el header `X-Request-Id` de todas las respuestas. Se acepta uno entrante con forma de UUID (8-4-4-4-12 hexadecimal, sin distinguir mayúsculas) para correlacionar con el cliente, y se devuelve y registra en minúsculas. Si no tiene esa forma, se genera uno nuevo con `crypto.randomUUID()`, para que el log no acepte texto arbitrario.
 > **Motivo:** un `requestId` en el cuerpo haría distintos el primer `422` y su repetición, y rompería R-4.14.
 
 ### 2.3 Unidad de trabajo transaccional
@@ -1520,11 +1524,13 @@ X-Request-Id: 6f0c…
 ```
 
 - `type`, `title`, `status` y `detail` siempre van presentes (RNF-01). `instance` no se usa.
-- **`title` es fijo por `type`**, y **`detail` es un texto fijo en español** escrito para el usuario. Ninguno se arma con mensajes de excepciones ni de PostgreSQL.
+- **`title` es fijo por `type`** (columna `title` de §7.2), y **`detail` es un texto fijo en español** escrito para el usuario: el de `mensajeDeProblema(type)` de `shared` (§13.1), el mismo que muestran web y móvil. Así, los textos tienen una sola fuente. Ninguno de los dos se arma con mensajes de excepciones ni de PostgreSQL.
 - Las extensiones son solo las de DD-23: `errores`, `motivo`, `transferenciaId` e `intentosRestantes`.
 - Los clientes deciden por `type`, nunca por `detail`.
 
 ### 7.2 Catálogo
+
+`title` de cada `type`, en el orden de la tabla siguiente: `validation-error` "Datos inválidos", `invalid-cursor` "Cursor inválido", `unauthorized` "No autenticado", `credenciales-invalidas` "Credenciales inválidas", `not-found` "No encontrado", `correo-ya-registrado` "Correo ya registrado", `beneficiario-duplicado` "Beneficiario duplicado", `clabe-not-found` "CLABE no encontrada", `misma-cuenta` "Misma cuenta", `idempotency-key-reused` "Llave de idempotencia reutilizada", `saldo-insuficiente` "Saldo insuficiente", `limite-diario-excedido` "Límite diario excedido", `codigo-incorrecto` "Código incorrecto", `codigo-agotado` "Código agotado", `codigo-expirado` "Código expirado", `too-many-requests` "Demasiadas peticiones", `retryable` "Servicio ocupado", `internal-error` "Error interno".
 
 | `type` | HTTP | Cuándo | Extensiones | Requisitos |
 |---|---|---|---|---|
@@ -1807,7 +1813,7 @@ Si alguna variante no cumple, se aplica la alternativa de §8.2 o se ajusta el �
 |---|---|
 | Cuerpos de petición y de respuesta | **No se registran nunca.** Los serializadores de `pino-http` solo emiten método, URL y código |
 | Headers `authorization` y `cookie` de la petición y `set-cookie` de la respuesta | Ocultos con `redact` (rutas `req.headers.authorization`, `req.headers.cookie` y `res.headers["set-cookie"]`), aunque los serializadores no emitan headers: si alguien los agrega, siguen censurados |
-| Propiedades `contrasena`, `hash_contrasena`, `accessToken`, `refreshToken`, `refresh_hash`, `codigo`, `codigoSimulado`, `codigo_hmac`, en cualquier objeto registrado | Censuradas con `redact` (rutas `*.campo` y `*.*.campo`) |
+| Propiedades `contrasena`, `hash_contrasena`, `accessToken`, `refreshToken`, `refresh_hash`, `codigo`, `codigoSimulado`, `codigo_hmac`, en cualquier objeto registrado | Censuradas con `redact`, con tres rutas por campo: `campo`, `*.campo` y `*.*.campo`. Sin la ruta simple, pino no censura la propiedad en el nivel superior (`logger.info({ contrasena })`), porque `*` siempre exige un nivel de anidación |
 | Correo | Enmascarado: `a***@dominio.mx` (primera letra y dominio) |
 | CLABE | Enmascarada: `**************1234` (últimos 4 dígitos) |
 | `Idempotency-Key`, ids y montos | Tal cual: no son secretos y hacen falta para investigar |
@@ -1854,7 +1860,7 @@ Tabla `evento_auditoria` (§3.2), de solo inserción (RNF-11, DD-18).
 
 ### 10.3 Salud y métricas
 
-- `GET /api/health` ejecuta `SELECT 1` con un timeout corto: responde `200` si la base contesta y `503 retryable` si no.
+- `GET /api/health` llama a la dependencia `verificarBase()` de `crearApp` (DD-08). Responde `200 {"estado":"ok"}` si resuelve, y `503 retryable` con `Retry-After: 1` si lanza, sin importar la causa. La implementación real ejecuta `SELECT 1` con un timeout corto (T-API-04). Hasta entonces, `main.ts` pasa un stub.
 - Métricas, trazas distribuidas y alarmas quedan para `docs/aws-deploy.md` (CloudWatch, X-Ray u OpenTelemetry). En local bastan los logs JSON y el `EXPLAIN` de §8.5.
 
 ---
