@@ -2212,7 +2212,7 @@ Casos de prueba: una CLABE cuya suma ponderada termina en 0 (dígito `0`, no `10
 | `retryable` | 503 | El servicio está ocupado. Inténtalo de nuevo en unos segundos. |
 | `internal-error` | 500 | Ocurrió un error inesperado. Inténtalo más tarde. |
 
-**Reglas de lint en `web`, `mobile` y `shared`** (RNF-09, D-18):
+**Reglas de lint en `api`, `web`, `mobile` y `shared`** (RNF-09, D-18):
 
 | Regla | Prohíbe |
 |---|---|
@@ -2220,11 +2220,11 @@ Casos de prueba: una CLABE cuya suma ponderada termina en 0 (dígito `0`, no `10
 | `no-restricted-syntax` | Cualquier división entre el literal `100` (`x / 100`) y cualquier llamada a `.toFixed(...)` |
 | `no-restricted-imports` (solo `mobile`) | `@react-native-async-storage/async-storage` (RNF-20) |
 
-Si una regla da un falso positivo fuera del camino del dinero, se desactiva en esa línea con un comentario que explique por qué.
+Las reglas de dinero aplican también en `api/**`, código y pruebas. La única excepción permitida es un falso positivo fuera del camino del dinero, por ejemplo la espera aleatoria del reintento de deadlock (§2.3). Se desactiva solo en esa línea, con `// eslint-disable-next-line <regla> -- <motivo>`. No se permiten excepciones por archivo ni por bloque.
 
 > **DD-42 · Aprobada · Reglas de lint para el dinero y el almacenamiento móvil**
 > **Contexto:** D-18 pide prohibir con lint `parseFloat` y `/ 100` sobre montos, y RNF-20 prohíbe `AsyncStorage`.
-> **Decisión:** además de `parseFloat` y `/ 100`, el lint prohíbe `Number.parseFloat`, `Math.round`, `Math.floor`, `Math.ceil` y `.toFixed` en `web`, `mobile` y `shared`. En `mobile` prohíbe además importar `AsyncStorage`. La regla aplica a todo el código y no intenta detectar "solo los montos".
+> **Decisión:** además de `parseFloat` y `/ 100`, el lint prohíbe `Number.parseFloat`, `Math.round`, `Math.floor`, `Math.ceil` y `.toFixed` en `api`, `web`, `mobile` y `shared`. En `mobile` prohíbe además importar `AsyncStorage`. La regla aplica a todo el código y no intenta detectar "solo los montos". Una excepción solo se admite en la línea, con un comentario que diga el motivo. _(Ampliada en T-API-03: al principio cubría solo `web`, `mobile` y `shared`. Se extendió a `api` porque ahí viven los casos de uso que mueven dinero.)_
 > **Motivo:** D-18 dice que en el sistema no existe ninguna operación de redondeo. Esas funciones son exactamente las de redondeo, y `toFixed` es el camino más común para formatear dinero con punto flotante. Detectar solo los montos exigiría análisis de tipos frágil; prohibirlas en general cuesta pocas excepciones explicadas. Prohibir el import convierte RNF-20 en una verificación automática.
 
 ### 13.2 Web
