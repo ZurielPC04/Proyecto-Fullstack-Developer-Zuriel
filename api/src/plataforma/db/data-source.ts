@@ -1,5 +1,7 @@
+import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { migraciones } from '../../migraciones/index.js';
+import { entidades } from '../../modulos/entidades.js';
 import { registrarParsers } from './parsers.js';
 
 export interface OpcionesDataSource {
@@ -19,6 +21,7 @@ export function crearDataSource({ url, poolMax }: OpcionesDataSource): DataSourc
     url,
     synchronize: false,
     migrationsRun: false,
+    entities: entidades,
     migrations: migraciones,
     migrationsTableName: 'migracion',
     migrationsTransactionMode: 'each',

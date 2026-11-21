@@ -407,6 +407,26 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `d8525b5` (proveedor de OTP no configurado, conexión fallida reintentable y URLs de las pruebas) y el de T-API-04.
 
+### Sesión 17 — 2026-11-20 · Implementación de T-API-05 a T-API-08 (migraciones)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó §3.1 a §3.7 y propuso un solo plan para las cuatro migraciones, con sus seams y una lista de huecos. Yo lo aprobé con ajustes antes de que escribiera código. Las decisiones fueron mías en todos los casos.
+
+**Correcciones a los requerimientos (T-API-05):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §7.3 pedía triggers `tg_<tabla>_<accion>`, pero §3.3 los nombraba `cuenta_protegida`, `asiento_inmutable`, etc. | Dos convenciones para el mismo objeto. Además, el error de un trigger (`P0001`) llegaba sin `constraint`, y DD-18 lo identificaba como "el `P0001` de `cuenta_protegida`", es decir, por el texto del mensaje, que DD-35 prohíbe | Las funciones conservan el nombre de §3.3 y los triggers usan `tg_<tabla>_<accion>` (tabla de equivalencias en §3.3). Cada `RAISE EXCEPTION` lleva `USING ERRCODE = 'P0001', CONSTRAINT = '<trigger>'`, así que el error llega con su `constraint` como un `CHECK` (§7.3, DD-35). La convención suma `pk_` e `ix_`. Claude Code señaló la diferencia y propuso los nombres; yo decidí agregar `ERRCODE` y `CONSTRAINT` y pedí una prueba de que el error de `cuenta_protegida` llega con `constraint = 'tg_cuenta_protegida'` |
+| §3.2: solo `usuario` tenía `DEFAULT gen_random_uuid()` | DD-11 dice que las cinco tablas con `uuid` lo generan en la base | §3.2 pone el `DEFAULT` en `cuenta`, `beneficiario`, `transferencia` y `sesion`. Claude Code lo señaló; yo lo aprobé |
+| §3.2: el `CHECK` de `usuario.correo` solo pedía minúsculas y longitud | DD-16 aplica a todos los campos de texto, incluido el correo, la regla de `btrim` y sin caracteres de control | §3.2 agrega esas reglas al correo. Claude Code lo señaló; yo lo aprobé |
+| §3.6: `clabe_valida(text) IMMUTABLE`, sin decir qué devuelve con un texto que no sean 18 dígitos | Con una función `sql`, el planificador puede evaluar `substr(...)::int` antes del `CASE` cuando recibe un literal, y lanzar un error en vez de devolver `false` | §3.6: devuelve `false` para todo lo que no sean 18 dígitos ASCII y `NULL` con `NULL` (`STRICT`). Se implementa en `plpgsql` para que no se inlinee. Claude Code lo propuso; yo lo aprobé |
+
+**Decisiones de implementación (T-API-05):**
+- DD-07 con TypeORM: las columnas `timestamptz` de las entidades se declaran como texto con `columnaInstante()`. Una entidad de sondeo comprobó, antes de usarlo en el modelo, que la lectura y la escritura conservan los microsegundos. La decisión fue mía; Claude Code la verificó primero, como pedí.
+- Sin `emitDecoratorMetadata`, porque esbuild y Oxc no lo soportan: cada `@Column` declara su `type`. Vitest usa Oxc (Vite 8), que no lee `experimentalDecorators` para `test/`, porque está fuera del `include` de `tsconfig.json`; las dos configuraciones de Vitest declaran `oxc.decorator.legacy`. Claude Code lo detectó al ver fallar la primera prueba con decoradores; yo aprobé no usar `emitDecoratorMetadata` en el plan.
+- La mutación de un peso de `clabe_valida` en el archivo de la migración hace fallar la migración misma, porque la CLABE de Fondeo deja de ser válida. Para que fallara la comparación, Claude Code también mutó la función ya desplegada en la base.
+
+**Commits relacionados (T-API-05):** `2d503d7` (nombres de triggers con `constraint`, `uuid` por defecto, reglas del correo y `clabe_valida` estricta) y el de T-API-05.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

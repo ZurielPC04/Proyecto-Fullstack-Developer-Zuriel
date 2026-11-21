@@ -4,7 +4,8 @@
     "noEmit": true,
     "composite": false,
     "declaration": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "experimentalDecorators": true
   },
   "include": ["src", "test", "vitest.config.ts", "vitest.integracion.config.ts"]
 }

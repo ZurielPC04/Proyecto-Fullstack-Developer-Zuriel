@@ -11,6 +11,8 @@ const PRUEBAS_DATABASE_URL_MIGRACIONES =
   'postgresql://billetera_owner:billetera_owner_dev@127.0.0.1:5433/billetera_test';
 
 export default defineConfig({
+  // Decoradores legacy de TypeORM también en test/, que no está en el include de tsconfig.json.
+  oxc: { decorator: { legacy: true } },
   test: {
     environment: 'node',
     include: ['test/integracion/**/*.test.ts'],
