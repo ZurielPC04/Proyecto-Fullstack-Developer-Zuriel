@@ -560,7 +560,7 @@ Las columnas `NOT NULL` se asumen salvo que se indique lo contrario.
 | Columna | Tipo | Restricciones |
 |---|---|---|
 | `id` | `uuid` | `PK DEFAULT gen_random_uuid()` |
-| `correo` | `text` | `UNIQUE`; `CHECK (correo = lower(correo) AND length(correo) BETWEEN 3 AND 254)` |
+| `correo` | `text` | `UNIQUE`; `CHECK (correo = lower(correo) AND length(correo) BETWEEN 3 AND 254)`; además las reglas de texto de DD-16 (`correo = btrim(correo)` y sin caracteres de control) |
 | `hash_contrasena` | `text` | `CHECK (hash_contrasena LIKE '$argon2id$%')` |
 | `creado_en` | `timestamptz` | `DEFAULT now()` |
 
@@ -570,7 +570,7 @@ El esquema Zod normaliza el correo (`trim` y minúsculas) antes de llegar a la b
 
 | Columna | Tipo | Restricciones |
 |---|---|---|
-| `id` | `uuid` | `PK` |
+| `id` | `uuid` | `PK DEFAULT gen_random_uuid()` (DD-11) |
 | `usuario_id` | `uuid` | Admite `NULL`; `FK → usuario` |
 | `tipo` | `text` | `CHECK (tipo IN ('USUARIO','SISTEMA'))` |
 | `nombre` | `text` | `CHECK (nombre IN ('Principal','Ahorro','Fondeo'))` |
@@ -591,7 +591,7 @@ La fila de Fondeo se crea en la migración con `id = '00000000-0000-0000-0000-00
 
 | Columna | Tipo | Restricciones |
 |---|---|---|
-| `id` | `uuid` | `PK` |
+| `id` | `uuid` | `PK DEFAULT gen_random_uuid()` (DD-11) |
 | `usuario_id` | `uuid` | `FK → usuario` |
 | `cuenta_id` | `uuid` | `FK → cuenta` (D-19) |
 | `nombre` | `text` | Longitud y caracteres de DD-16 |
@@ -606,7 +606,7 @@ La fila de Fondeo se crea en la migración con `id = '00000000-0000-0000-0000-00
 
 | Columna | Tipo | Restricciones |
 |---|---|---|
-| `id` | `uuid` | `PK` |
+| `id` | `uuid` | `PK DEFAULT gen_random_uuid()` (DD-11) |
 | `usuario_id` | `uuid` | Admite `NULL`; `FK → usuario` |
 | `tipo` | `text` | `CHECK (tipo IN ('FONDEO','TRASPASO','TERCERO'))` |
 | `cuenta_origen_id` | `uuid` | `FK → cuenta` |
@@ -685,7 +685,7 @@ Restricciones:
 
 | Columna | Tipo | Restricciones |
 |---|---|---|
-| `id` | `uuid` | `PK` |
+| `id` | `uuid` | `PK DEFAULT gen_random_uuid()` (DD-11) |
 | `usuario_id` | `uuid` | `FK → usuario` |
 | `familia_id` | `uuid` | Índice |
 | `refresh_hash` | `text` | `UNIQUE`; `CHECK (refresh_hash ~ '^[0-9a-f]{64}$')` |
@@ -742,6 +742,23 @@ Restricciones:
 | `asiento_cuadra` | `asiento`, `AFTER INSERT`, `CONSTRAINT … DEFERRABLE INITIALLY DEFERRED` | `comprobar_transferencia(NEW.transferencia_id)` al confirmar | D-14 |
 | `codigo_protegido` | `codigo_confirmacion`, `BEFORE UPDATE OR DELETE` | Solo permite `intentos = OLD.intentos + 1`; lo demás es inmutable | D-07 |
 | `auditoria_inmutable` | `evento_auditoria`, `BEFORE UPDATE OR DELETE` | Lanza un error | RNF-11 |
+
+**Nombres.** Los nombres de la tabla anterior son los de las **funciones**. Cada trigger se crea con la convención `tg_<tabla>_<accion>` de §7.3:
+
+| Función | Trigger |
+|---|---|
+| `aplicar_asiento()` | `tg_asiento_aplica_saldo` |
+| `asiento_inmutable()` | `tg_asiento_inmutable` |
+| `cuenta_protegida()` | `tg_cuenta_protegida` |
+| `validar_beneficiario()` | `tg_beneficiario_validar` |
+| `validar_transferencia()` | `tg_transferencia_validar` |
+| `transferencia_transicion()` | `tg_transferencia_transicion` |
+| `transferencia_cuadra()` → `comprobar_transferencia(NEW.id)` | `tg_transferencia_cuadra` |
+| `asiento_cuadra()` → `comprobar_transferencia(NEW.transferencia_id)` | `tg_asiento_cuadra` |
+| `codigo_protegido()` | `tg_codigo_confirmacion_protegido` |
+| `auditoria_inmutable()` | `tg_evento_auditoria_inmutable` |
+
+Cada `RAISE EXCEPTION` de estas funciones lleva `USING ERRCODE = 'P0001', CONSTRAINT = '<nombre del trigger>'`, de modo que el error llega a la API con su `constraint`, igual que un `UNIQUE` o un `CHECK` (§7.3, DD-35). El texto del mensaje empieza con el nombre de la función (`'cuenta_protegida: …'`) solo para leer el log; nadie decide por él. `comprobar_transferencia` reporta el trigger que la llamó (`tg_transferencia_cuadra` o `tg_asiento_cuadra`), que recibe como segundo parámetro.
 
 Los triggers de inmutabilidad protegen incluso del rol dueño. Los permisos de §3.4 son la primera barrera y los triggers la segunda. `TRUNCATE` no dispara triggers de fila; solo lo tiene el rol dueño, y solo lo usan las pruebas para limpiar `billetera_test`.
 
@@ -959,7 +976,7 @@ Estructura de 18 dígitos: **banco (3) + plaza (3) + cuenta (11) + dígito verif
 
 CLABE de Fondeo: `999000000000000001`. Los primeros 17 dígitos `99900000000000000`, con pesos 3, 7, 1, dan `7 + 3 + 9 = 19`, y el dígito es `(10 − 9) % 10 = 1`. Este valor entra como caso de prueba de `validarClabe`.
 
-**En la base.** `clabe_valida(text) RETURNS boolean IMMUTABLE` implementa el mismo algoritmo en SQL y lo usan los `CHECK` de `cuenta` y `beneficiario`. Una prueba compara `clabe_valida` con `validarClabe` de `shared` sobre 10,000 CLABEs aleatorias y los casos borde (dígito 0, suma múltiplo de 10).
+**En la base.** `clabe_valida(text) RETURNS boolean IMMUTABLE` implementa el mismo algoritmo en SQL y lo usan los `CHECK` de `cuenta` y `beneficiario`. Devuelve `false` para cualquier texto que no sean exactamente 18 dígitos ASCII: un `CASE` evita convertir letras o espacios a entero. Con `NULL` devuelve `NULL` (`STRICT`), y las columnas que la usan son `NOT NULL`. Una prueba compara `clabe_valida` con `validarClabe` de `shared` sobre 10,000 CLABEs aleatorias y los casos borde (dígito 0, suma múltiplo de 10).
 
 > **DD-19 · Aprobada · Generación de CLABE aleatoria y validación también en la base**
 > **Contexto:** D-19 fija banco ficticio, plaza, cuenta y dígito verificador, pero no cómo se elige el número de cuenta.
@@ -1575,7 +1592,9 @@ Los `type` de esta tabla son exactamente el `enum` de `TipoProblema` en `openapi
 | `55P03`, `57014`, `40P01` agotado, conexión rechazada | `code` de `pg` | `503 retryable` (DD-10) |
 | Cualquier otro error | — | `500 internal-error` |
 
-**Las restricciones tienen nombre.** Cada `UNIQUE`, `CHECK`, FK y trigger se crea con nombre explícito (`uq_<tabla>_<columnas>`, `ck_<tabla>_<regla>`, `fk_<tabla>_<columna>`, `tg_<tabla>_<accion>`). El manejador decide por el **nombre** de la restricción, nunca por el texto del mensaje de PostgreSQL. Esos nombres no salen de la API.
+**Las restricciones tienen nombre.** Cada `UNIQUE`, `CHECK`, FK y trigger se crea con nombre explícito (`pk_<tabla>`, `uq_<tabla>_<columnas>`, `ck_<tabla>_<regla>`, `fk_<tabla>_<columna>`, `tg_<tabla>_<accion>`; los índices no únicos, `ix_<tabla>_<columnas>`). Las funciones de los triggers conservan los nombres de §3.3. El manejador decide por el **nombre** de la restricción, nunca por el texto del mensaje de PostgreSQL. Esos nombres no salen de la API.
+
+**Los triggers reportan su nombre como `constraint`.** Cada `RAISE EXCEPTION` de una función de trigger lleva `USING ERRCODE = 'P0001', CONSTRAINT = 'tg_<tabla>_<accion>'`. Así, el error de `pg` trae `code = 'P0001'` y `constraint` con el nombre del trigger, y el manejador lo trata igual que un `CHECK` o un `UNIQUE`. El prefijo con el nombre de la función en el texto solo sirve para leer el log.
 
 **Registro y beneficiarios sin verificar antes.** El duplicado se detecta por el `23505` del `INSERT`, no por un `SELECT` previo: la consulta previa tendría una carrera entre la lectura y la escritura, y el índice único es atómico.
 
@@ -1599,6 +1618,7 @@ Los `type` de esta tabla son exactamente el `enum` de `TipoProblema` en `openapi
 > **Contexto:** RNF-01 prohíbe filtrar detalles internos, pero el manejador necesita saber qué falló para elegir el `type`.
 > **Decisión:**
 > - Las restricciones tienen nombres explícitos con la convención anterior, y el manejador decide solo por `code` y `constraint` del error de `pg`.
+> - Los triggers también: cada `RAISE EXCEPTION` lleva `USING ERRCODE = 'P0001', CONSTRAINT = '<nombre del trigger>'`, para que un rechazo de la base llegue con su `constraint` como un `UNIQUE` o un `CHECK`. Ningún error se reconoce por el texto de su mensaje.
 > - `title` y `detail` son textos fijos por `type`.
 > - JSON mal formado y cuerpo demasiado grande responden `400 validation-error`, sin `413` ni `type` propios.
 > - Un deadlock que persiste después de 3 reintentos responde `503 retryable`.
