@@ -476,6 +476,19 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Pendiente (T-CI-02):** el job no se puede probar sin hacer push. Quedó listo y con su commit, pero la casilla **no** está marcada en `tasks.md` hasta que corra en verde en Actions.
 
+**Corrección a los requerimientos (T-API-10):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| DD-17: "APLICADA con un solo asiento", "no suman cero", "invertidos", "tipo equivocado" y "`creado_en` distinto" los rechaza `asiento_cuadra` | Los dos triggers diferidos llaman a la misma `comprobar_transferencia`, y al `COMMIT` corren en el orden de sus eventos. Cuando la transferencia se inserta en la misma transacción que sus asientos, el que reporta es `tg_transferencia_cuadra`. Una prueba que exige el `constraint` exacto habría fallado | La tabla de DD-17 atribuye cada caso al trigger que de verdad reporta, y explica la regla: `tg_asiento_cuadra` reporta cuando se agregan asientos a una transferencia ya confirmada. Claude Code lo detectó al preparar los casos, antes de escribirlos, y lo corrigió siguiendo la regla de esperar el `constraint` exacto |
+
+**Notas de implementación (T-API-10):**
+- Los casos que solo puede alcanzar el rol dueño (cambiar la identidad de una transferencia, borrarla, modificar asientos, escribir el saldo directo) se prueban como dueño. Con `billetera_app` darían `42501` antes de llegar al trigger, y esos `42501` están en `permisos.test.ts` con `has_*_privilege`.
+- La revisión de `pg_proc` exige que haya **exactamente** una función `SECURITY DEFINER` (`aplicar_asiento`), para que no pueda pasar en vacío, y que no tenga `EXECUTE` para `PUBLIC`.
+- Dos veces, en T-API-08 y en una mutación de T-API-10, el worker de Vitest terminó con una caída nativa de Windows (`0xC0000409`) al fallar una prueba de integración. La siguiente corrida, igual, terminó normal. Queda registrado por si se repite en CI.
+
+**Commits relacionados (T-CI-02 y T-API-10):** el `docs(specs)` de §14.5, el de T-CI-02, el `docs(specs)` de DD-17 y el de T-API-10.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
