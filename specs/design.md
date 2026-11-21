@@ -848,6 +848,10 @@ BEGIN
 END $$;
 ```
 
+La parte resumida como "simétrico" es la misma comprobación para el abono: un asiento en `t.cuenta_destino_id` por `+t.monto_centavos`, con `creado_en = t.aplicada_en` y `tipo_movimiento` igual a `DEPOSITO` (`FONDEO`), `RECEPCION` (`TERCERO`) o `TRASPASO_ENTRADA` (`TRASPASO`); si no existe, `'… sin abono correcto'`. Como hay exactamente 2 asientos, un cargo correcto y un abono correcto agotan los dos.
+
+La firma completa es `comprobar_transferencia(p_id uuid, p_trigger text)`. `p_trigger` es el nombre del trigger que la llama (`tg_transferencia_cuadra` o `tg_asiento_cuadra`), y cada `RAISE EXCEPTION` lo usa en `USING ERRCODE = 'P0001', CONSTRAINT = p_trigger` (§7.3).
+
 Cada tabla tiene su propia función de trigger, que llama a `comprobar_transferencia` con el `id` que le corresponde. Una sola función de trigger no puede leer `NEW.transferencia_id` en una tabla y `NEW.id` en la otra.
 
 **Máquina de estados (`transferencia_transicion`)**
