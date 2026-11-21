@@ -350,6 +350,22 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `7c38521` (lista de contraseñas y forma del cursor), `32c527e` (formato de uuid en §6.7) y el de T-SHR-07.
 
+### Sesión 14 — 2026-11-20 · Implementación de T-API-02 (configuración validada y arranque)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó las specs y propuso un plan con sus seams y una lista de huecos de §2.4, y yo lo aprobé con ajustes antes de que escribiera código. Las decisiones fueron mías en todos los casos.
+
+**Correcciones a los requerimientos:**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| T-API-02: verificación con `npx vitest run -w api -t "RNF-15"`. DD-46 (`tasks.md` §1.4): `npx vitest run -t "R-4.14"` | `npx` le pasa a vitest todo lo que va después de `vitest`, y vitest lee `-w` como `--watch`. El comando arrancaba en modo watch desde la raíz, donde no hay configuración de Vitest, y se quedaba colgado | La convención de DD-46 usa el script del workspace, `npm test -w api -- -t "R-4.14"`, y prohíbe `npx vitest` desde la raíz. La verificación de T-API-02 pasa a `npm test -w api -- -t "RNF-15"`. Claude Code detectó que se colgaba y propuso `npx -w api vitest run`; yo decidí la forma del resto del repo (`npm test -w <workspace> -- …`), extender la regla a DD-46 y dejar la línea de T-API-10 para T-API-09, que crea esa configuración |
+| §2.4 no enumeraba los niveles de `LOG_LEVEL`, aceptaba cualquier URL en `WEB_ORIGIN` y `DATABASE_URL`, no exigía `> 0` en el límite ni en el umbral, ni decía qué valor tenían los secretos en `.env.example` ni con qué nivel se registra una configuración inválida | `WEB_ORIGIN=http://localhost:5173/` habría pasado la validación y roto CORS sin aviso, porque `cors` compara el origen exacto. Un `.env.example` con secretos de ejemplo válidos dejaba arrancar con un secreto conocido. RNF-15 exige enteros positivos en el límite y el umbral | §2.4: `LOG_LEVEL` en `fatal`…`silent`; `WEB_ORIGIN` solo el origen `http(s)`, sin ruta, query, fragmento ni `/` final; `DATABASE_URL` con protocolo `postgres:` o `postgresql:`; límite y umbral `> 0`; secretos vacíos en `.env.example`, con el comando para generarlos, para que no arranque sin ellos; el registro de la configuración inválida usa el nivel `info` porque `LOG_LEVEL` todavía no está validado. Claude Code señaló los huecos (a–f) y propuso las reglas. Yo las aprobé y agregué dos: `WEB_ORIGIN` con `https:` en producción, porque la cookie del refresh lleva `Secure` (DD-24), y `PORT` de 1 a 65535 |
+
+**Otros huecos:**
+- Zod 4 corre `superRefine` aunque un campo ya haya fallado. Con `LIMITE_DIARIO_CENTAVOS=0` se reportaba también `UMBRAL_CODIGO_CENTAVOS`, que estaba sano, y eso contradice la regla de §2.4 de que cada regla cruzada reporta la variable que la rompe. Las reglas cruzadas ahora corren solo si no hay errores de campo (`when` de Zod 4), y una prueba lo cubre. Claude Code lo detectó en una prueba en rojo y lo resolvió siguiendo §2.4, bajo mi instrucción de resolver los huecos menores conforme a las specs; yo lo revisé y lo aprobé al cerrar la tarea.
+
+**Commits relacionados:** `5728c50` (§1.2 y §2.4), `97862a2` (verificación con el script del workspace) y el de T-API-02.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

@@ -70,7 +70,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 
 **Fase 2 · Plataforma de la API**
 
-- [ ] T-API-02 · `api` · P1 · Configuración validada y arranque
+- [x] T-API-02 · `api` · P1 · Configuración validada y arranque
 - [ ] T-API-03 · `api` · P1 · Middlewares, errores RFC 7807, logs y documentación navegable
 - [ ] T-API-04 · `api` · P1 · Acceso a datos y unidad de trabajo
 
