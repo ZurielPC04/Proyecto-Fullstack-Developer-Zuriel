@@ -380,7 +380,7 @@ flowchart LR
   - `afterEach` global con las invariantes: `saldo = SUM(asientos)` por cuenta, `SUM(saldo) = 0` y ninguna transferencia incoherente.
   - Validador Ajv (JSON Schema 2020-12) que comprueba cada respuesta de Supertest contra `openapi.yaml`.
   - Fábricas de datos de prueba que fondean con `FONDEO`.
-- **Verificación:** una prueba que rompe a propósito una invariante con el rol dueño (en una base desechable) hace fallar el `afterEach`; `npm run test:integracion` en verde.
+- **Verificación:** una prueba que rompe a propósito cada invariante con el rol dueño hace fallar el `afterEach`; `npm run test:integracion` en verde. Corre en `billetera_test` y la vacía después, porque `billetera_owner` no tiene `CREATEDB` e `init.sql` crea solo dos bases.
 - **Commit:** `test(api): T-API-09 arnés de integración con invariantes [RNF-23, RNF-07]`
 
 ### T-CI-02 · Job `integracion` · `ci` · P1
