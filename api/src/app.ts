@@ -3,21 +3,26 @@ import cors from 'cors';
 import express, { type Express, type Router } from 'express';
 import helmet from 'helmet';
 import type { Logger } from 'pino';
+import type { DataSource } from 'typeorm';
 import type { Config } from './config/index.js';
+import type { ProveedorOtp } from './plataforma/otp/index.js';
+import type { Reloj } from './plataforma/reloj/index.js';
 import { rutasDocumentacion } from './plataforma/http/documentacion.js';
 import { manejadorErrores, noEncontrado } from './plataforma/http/manejador-errores.js';
 import { requestId } from './plataforma/http/request-id.js';
 import { rutasSalud } from './plataforma/http/salud.js';
 import { logPeticiones } from './plataforma/logging/log-peticiones.js';
 
-/**
- * Dependencias de la raíz de composición (DD-08). T-API-04 agrega DataSource, Reloj y ProveedorOtp.
- */
+/** Dependencias de la raíz de composición (DD-08); las pruebas pasan sus dobles. */
 export interface DependenciasApp {
   config: Config;
   logger: Logger;
-  /** §10.3: resuelve si la base contesta. T-API-04 la implementa con SELECT 1. */
+  /** §10.3: resuelve si la base contesta (SELECT 1 con timeout corto). */
   verificarBase: () => Promise<void>;
+  /** Para `conTransaccion` y los repositorios de los módulos (§2.3). */
+  dataSource: DataSource;
+  reloj: Reloj;
+  proveedorOtp: ProveedorOtp;
 }
 
 /**

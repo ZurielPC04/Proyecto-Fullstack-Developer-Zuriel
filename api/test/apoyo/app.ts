@@ -1,8 +1,11 @@
 // Arma la app real con dobles de sus dependencias (DD-08), sin base de datos ni puertos.
 import type { Router } from 'express';
+import type { DataSource } from 'typeorm';
 import { crearApp } from '../../src/app.js';
 import type { Config } from '../../src/config/index.js';
 import { crearLogger } from '../../src/plataforma/logging/logger.js';
+import { ProveedorOtpSimulado } from '../../src/plataforma/otp/index.js';
+import { RelojFijo } from '../../src/plataforma/reloj/index.js';
 
 export const WEB_ORIGIN = 'http://localhost:5173';
 
@@ -40,7 +43,15 @@ export function appDePrueba({ config, verificarBase, modulos = [] }: OpcionesApp
     destino: { write: (l: string) => void lineas.push(l) },
   });
   const app = crearApp(
-    { config: configDePrueba(config), logger, verificarBase: verificarBase ?? (async () => {}) },
+    {
+      config: configDePrueba(config),
+      logger,
+      verificarBase: verificarBase ?? (async () => {}),
+      // Sin base: ningún router de estas pruebas usa el DataSource.
+      dataSource: {} as DataSource,
+      reloj: new RelojFijo('2026-11-14 16:05:09.123456+00'),
+      proveedorOtp: new ProveedorOtpSimulado(),
+    },
     modulos,
   );
   return {

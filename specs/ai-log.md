@@ -386,6 +386,27 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `d4eba0f` (DD-42 en `api`), `c117962` (redact, títulos, request ID, salud y `crearModulos`), `6cfb5cc` (DD-35 con 18 `type`) y el de T-API-03.
 
+### Sesión 16 — 2026-11-20 · Implementación de T-API-04 (acceso a datos y unidad de trabajo)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó las specs y propuso un plan con sus seams y una lista de huecos, y yo lo aprobé con ajustes antes de que escribiera código. Las decisiones fueron mías en todos los casos.
+
+**Correcciones a los requerimientos:**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §2.1 y D-07: `ProveedorOtpSimulado` solo se instancia con `OTP_SIMULADO=true` | Nada decía qué proveedor recibe `crearApp` con `OTP_SIMULADO=false`, que es justo producción | §2.1 agrega `ProveedorOtpNoConfigurado`: su `enviar` siempre lanza y es el punto de integración con SMS o correo. Si `enviar` falla después del `COMMIT`, la API registra la causa y responde `500`; la transferencia queda pendiente, no mueve dinero ni consume el límite, y expira sola a los 5 minutos (§6.5). Claude Code señaló el hueco y propuso el proveedor. Yo pedí además que el envío ocurriera dentro de la transacción; Claude Code señaló que eso contradecía §6.5 y retenía los bloqueos durante una llamada externa. Yo decidí mantener §6.5 (envío después del `COMMIT`) |
+| §14.2 no decía de dónde salen las URLs de las pruebas de integración | Sin una fuente propia, las pruebas habrían usado el esquema de configuración de la API (§2.4) o URLs fijas en el código | §14.2 documenta `PRUEBAS_DATABASE_URL` y `PRUEBAS_DATABASE_URL_MIGRACIONES`, con valores por defecto de la base local de `init.sql`; las lee solo `vitest.integracion.config.ts`. Claude Code lo propuso; yo lo aprobé |
+| T-API-10 verificaba con `npx vitest run -c vitest.integracion.config.ts` | Esa configuración nace en T-API-04, y `npx vitest` desde la raíz contradice DD-46 | La verificación de T-API-10 pasa a `npm run test:integracion -w api -- -t "…"`. Claude Code señaló el desfase; yo decidí corregirla en esta tarea |
+| §2.3 no trataba una base no disponible, aunque §7.2 la lista como `503 retryable` | `conTransaccion` habría propagado `ECONNREFUSED` como error interno (`500`) | §2.3 agrega la fila: una falla al **obtener la conexión** se traduce a `Reintentable`, porque no quedó ningún efecto escrito. Claude Code lo propuso; yo lo aprobé. Una prueba con un proxy TCP que se cierra lo verifica contra la base real |
+
+**Pendiente para T-API-05:**
+- Al hidratar una entidad, TypeORM convierte las columnas `timestamptz` a `Date`, aunque el parser de `pg` las entregue como texto. Eso rompería DD-07, que pide texto con microsegundos. Las entidades van a necesitar un `transformer` o una columna tipada como texto. Claude Code lo detectó al revisar §3.5; yo pedí dejarlo anotado para T-API-05.
+
+**Avisos de `npm audit` aceptados:**
+- Claude Code detectó 3 vulnerabilidades moderadas en dependencias de producción al instalar `typeorm@0.3.31`: `typeorm` → `glob@10.5.0` → `minimatch@9.0.9` (GHSA-3g3m-2fjr-6pw4 en `glob` ≤ 14.0.1 y GHSA-g3hv-75wg-m249 en `minimatch` < 11.0.1). La corrección está en `minimatch` ≥ 11.0.1 y `glob` ≥ 14.0.2. `glob@10` solo acepta `minimatch ^9.0.4`, y `typeorm` 0.3 pide `glob ^10.5.0`, así que la única salida sería `typeorm` 1.x, que contradice DD-01. Yo decidí aceptarlo, porque `typeorm` solo usa `glob` cuando recibe patrones de texto en `migrations`, `entities` o `subscribers`. Una prueba de integración (`listas-explicitas.test.ts`, DD-05) garantiza que esas opciones solo contienen clases: falla si alguien agrega un patrón como `'src/**/*.ts'`. Mi primer dato decía que la corrección estaba en `minimatch` 10; Claude Code lo verificó con `npm audit` y registró las versiones correctas.
+
+**Commits relacionados:** `d8525b5` (proveedor de OTP no configurado, conexión fallida reintentable y URLs de las pruebas) y el de T-API-04.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

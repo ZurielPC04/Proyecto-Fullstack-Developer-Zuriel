@@ -1,4 +1,5 @@
 import { pino } from 'pino';
+import type { DataSource } from 'typeorm';
 import { describe, expect, it } from 'vitest';
 import { arrancar } from '../../src/arranque.js';
 
@@ -30,8 +31,8 @@ function dobles(env: Record<string, string | undefined>) {
     proceso,
     conectarBase: async () => {
       llamadas.push('conectarBase');
+      return { dataSource: {} as DataSource, verificarBase: async () => {} };
     },
-    verificarBase: async () => {},
     escuchar: async (_app: unknown, puerto: number) => {
       llamadas.push(`escuchar:${puerto}`);
     },
