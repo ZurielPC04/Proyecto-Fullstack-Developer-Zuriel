@@ -811,12 +811,14 @@ Las cuentas nunca cambian de dueño (`cuenta_protegida`), así que la clasificac
 > | Transferencia de usuario desde una cuenta ajena | `validar_transferencia` |
 > | `FONDEO` hacia la cuenta Fondeo, o un origen de usuario con `tipo = 'FONDEO'` | `validar_transferencia` |
 > | `beneficiario_id` de otro usuario, o que no apunta a la cuenta destino | `validar_transferencia` |
-> | `APLICADA` sin asientos | `transferencia_cuadra`, al hacer `COMMIT` |
-> | `APLICADA` con un solo asiento, o con dos que no suman cero | `asiento_cuadra`, al hacer `COMMIT` |
-> | Dos asientos que suman cero pero invertidos (abono en origen, cargo en destino) | `asiento_cuadra` |
-> | Asientos con tipo de movimiento equivocado (`ENVIO` en un `TRASPASO`) | `asiento_cuadra` |
-> | Asientos con `creado_en` distinto de `aplicada_en` | `asiento_cuadra` |
-> | Asientos en una transferencia `RECHAZADA` o `PENDIENTE_CONFIRMACION` | `asiento_cuadra` |
+> | `APLICADA` sin asientos | `tg_transferencia_cuadra`, al hacer `COMMIT` |
+> | `APLICADA` con un solo asiento, o con dos que no suman cero | `tg_transferencia_cuadra`, al hacer `COMMIT` |
+> | Dos asientos que suman cero pero invertidos (abono en origen, cargo en destino) | `tg_transferencia_cuadra`, al hacer `COMMIT` |
+> | Asientos con tipo de movimiento equivocado (`ENVIO` en un `TRASPASO`) | `tg_transferencia_cuadra`, al hacer `COMMIT` |
+> | Asientos con `creado_en` distinto de `aplicada_en` | `tg_transferencia_cuadra`, al hacer `COMMIT` |
+> | Asientos en una transferencia `RECHAZADA` o `PENDIENTE_CONFIRMACION` ya confirmada | `tg_asiento_cuadra`, al hacer `COMMIT` |
+>
+> **Qué trigger reporta.** `tg_transferencia_cuadra` y `tg_asiento_cuadra` llaman a la misma `comprobar_transferencia`, y los triggers diferidos corren al `COMMIT` en el orden de sus eventos. Cuando la transferencia se inserta en la misma transacción que sus asientos, su evento es el primero y el que reporta es `tg_transferencia_cuadra`. `tg_asiento_cuadra` reporta cuando se agregan asientos a una transferencia ya confirmada. Cada prueba espera el `constraint` exacto que corresponde a su caso.
 
 **Verificación diferida (resumen)**
 
