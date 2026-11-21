@@ -1,10 +1,10 @@
 // Fábricas de datos de las pruebas de integración (design.md §14.2). Corren como
 // billetera_app dentro de conTransaccion: el saldo lo mueve aplicar_asiento por los triggers
-// y la suma cero la verifica la base al confirmar. T-API-11 las cambia por el caso de uso
-// `fondear`; hasta entonces el FONDEO se escribe con SQL, igual que lo hará ese caso de uso.
+// y la suma cero la verifica la base al confirmar. El FONDEO sale del caso de uso `fondear`.
 import { randomInt, randomUUID } from 'node:crypto';
 import { digitoVerificador } from '@billetera/shared';
 import type { DataSource } from 'typeorm';
+import { crearTransferencias } from '../../../src/modulos/transferencias/transferencias.casos-uso.js';
 import { crearConTransaccion } from '../../../src/plataforma/db/unidad-de-trabajo.js';
 import { crearLogger } from '../../../src/plataforma/logging/logger.js';
 import { RelojBaseDatos } from '../../../src/plataforma/reloj/index.js';
@@ -52,31 +52,15 @@ export async function crearUsuarioConCuentas(dataSource: DataSource): Promise<Us
   });
 }
 
-/** D-02: un FONDEO desde la cuenta de sistema, aplicado, con sus dos asientos. */
+/** D-02: un FONDEO por el caso de uso real `fondear` (T-API-11), en su propia transacción. */
 export async function fondear(
   dataSource: DataSource,
   cuentaId: string,
   montoCentavos: number,
   concepto = 'Depósito',
 ): Promise<string> {
-  const reloj = new RelojBaseDatos();
-  return conTransaccionDe(dataSource)(async (tx) => {
-    // D-12: las cuentas se bloquean por id ascendente; el instante se lee después (DD-36).
-    await tx.query('SELECT id FROM cuenta WHERE id = ANY($1) ORDER BY id FOR UPDATE', [
-      [FONDEO_ID, cuentaId],
-    ]);
-    const ahora = await reloj.ahora(tx);
-    const [transferencia] = (await tx.query(
-      `INSERT INTO transferencia (tipo, cuenta_origen_id, cuenta_destino_id, monto_centavos, concepto,
-                                  estado, creado_en, aplicada_en)
-       VALUES ('FONDEO', $1, $2, $3, $4, 'APLICADA', $5, $5) RETURNING id`,
-      [FONDEO_ID, cuentaId, montoCentavos, concepto, ahora],
-    )) as { id: string }[];
-    await tx.query(
-      `INSERT INTO asiento (transferencia_id, cuenta_id, monto_centavos, tipo_movimiento, creado_en)
-       VALUES ($1, $2, $3, 'FONDEO_SALIDA', $5), ($1, $4, $6, 'DEPOSITO', $5)`,
-      [transferencia?.id, FONDEO_ID, -montoCentavos, cuentaId, ahora, montoCentavos],
-    );
-    return transferencia?.id ?? '';
-  });
+  const transferencias = crearTransferencias({ reloj: new RelojBaseDatos() });
+  return conTransaccionDe(dataSource)((tx) =>
+    transferencias.fondear(tx, cuentaId, montoCentavos, concepto),
+  );
 }

@@ -489,6 +489,27 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-CI-02 y T-API-10):** el `docs(specs)` de §14.5, el de T-CI-02, el `docs(specs)` de DD-17 y el de T-API-10.
 
+### Sesión 19 — 2026-11-21 · Implementación de T-API-11 a T-API-13 (fondeo, registro y sesión)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó §2.1, §2.3, §3.4, §5.1 a §5.4, §6.3, §7.2, §10.1, §10.2, §12.1, §12.2 y las DD indicadas, y propuso un solo plan para las tres tareas con sus seams y tres puntos a decidir. Yo lo aprobé una vez antes de que escribiera código. Las decisiones fueron mías en todos los casos.
+
+**Correcciones a la IA y al prompt (plan):**
+
+| Qué pedía | Problema | Decisión |
+|---|---|---|
+| Mi prompt: CLABE aleatoria "con reintento ante `23505`" | Contradice DD-19: un `23505` aborta la transacción del registro y reintentar exigiría un `SAVEPOINT`. DD-19 usa `ON CONFLICT (clabe) DO NOTHING RETURNING id` justo para evitarlo. Claude Code lo señaló | Se sigue DD-19: hasta 5 intentos y `500` si se agotan. Mi regla era incorrecta |
+| Mi prompt: mutación "jwtVerify sin `algorithms`", detectada con tokens `alg: none` o firmados con otro secreto | Esos dos tokens los rechaza jose aunque falte la lista: la mutación sobreviviría. Claude Code lo señaló | La mutación se detecta con un token HS512 firmado con el mismo `JWT_SECRETO`, que jose acepta sin la lista; `alg: none` y otro secreto quedan como regresión |
+
+**T-API-11:** sin correcciones a los requerimientos. Notas:
+- `fondear(tx, cuentaDestinoId, monto, concepto = 'Depósito')`: el cuarto parámetro opcional permite el `"Depósito de bienvenida"` de DD-12 sin otro caso de uso.
+- El `usuario_id` de la cuenta destino se lee sin bloqueo antes de bloquear al usuario: no cambia nunca (`cuenta_protegida`), así que leerlo no rompe el orden de D-12.
+- `registrarEvento` inserta sin `RETURNING`, porque `billetera_app` no tiene `SELECT` sobre `evento_auditoria` (§3.4).
+- La prueba del orden de bloqueo retiene al usuario desde otra conexión y comprueba con `FOR UPDATE NOWAIT` que ninguna cuenta está tomada mientras el fondeo espera; después verifica que `aplicada_en` es posterior a la liberación (DD-36).
+- Mutación (a), `fondear` sin `registrarEvento`: roja en la prueba del evento.
+- La primera corrida completa de la integración volvió a terminar con la caída nativa de Windows (`0xC0000409`) en un archivo ajeno; la siguiente, igual, pasó completa.
+
+**Commits relacionados (T-API-11):** el de T-API-11.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
