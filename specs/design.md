@@ -2788,11 +2788,11 @@ El nombre de cada prueba empieza con los IDs que verifica: `it('R-4.14 repetici�
 | Job | Pasos |
 |---|---|
 | `calidad` | `npm ci`; compilar `shared`; `npm run lint`; `npm run lint:verificar-reglas` (DD-42); `npm run typecheck`; `redocly lint specs/openapi.yaml`; `npm run gen:tipos` y `git diff --exit-code` (DD-27) |
-| `unitarias` | Pruebas de `shared`, `api` (unitarias) y `web` |
+| `unitarias` | `npm ci`; compilar `shared`; `npm test -w packages/shared -w api -w web`: pruebas de `shared`, `api` (solo unitarias, sin base) y `web`, nombradas de forma explícita para que no repita `mobile` |
 | `integracion` | *Service container* `postgres:17`; después del checkout, un paso ejecuta `docker/postgres/init.sql` con `psql` como superusuario; `npm run test:integracion -w api` (integración y concurrencia), con `PRUEBAS_DATABASE_URL*` apuntando al contenedor (§14.2) |
+| `movil` | `npm ci`; compilar `shared`; `npm test -w mobile` (`jest-expo`) |
 
 **Por qué `init.sql` se ejecuta y no se monta.** GitHub Actions arranca los *service containers* antes de los pasos del job, es decir, antes del checkout, así que el archivo todavía no existe en el runner y no se puede montar en `/docker-entrypoint-initdb.d`. El paso con `psql -v ON_ERROR_STOP=1 -f docker/postgres/init.sql` aplica el mismo archivo que usa Docker Compose en local (DD-06), y falla el job si alguna sentencia falla.
-| `movil` | Pruebas de `mobile` con `jest-expo` |
 
 Los cuatro jobs son obligatorios para fusionar a `main`, y `main` debe quedar en verde (RNF-29).
 
