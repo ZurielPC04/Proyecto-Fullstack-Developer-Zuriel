@@ -715,6 +715,29 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-22):** `3151897` (H1), `56b9c76` (H5) y el de T-API-22.
 
+**Correcciones a los requerimientos (T-API-24):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| `tasks.md`, verificación de T-API-24: "el correo aparece enmascarado" | Ningún log de la API registra el correo; solo queda en el evento `login-fallido` | H2a: el correo completo no aparece en el log, y en `login-fallido` aparece enmascarado |
+| §2.2: `demoLatencia` como middleware 11, después de las rutas | Un middleware posterior al router no corre cuando el controlador ya respondió | H2b: se monta en las dos rutas POST, antes del controlador, y retrasa el envío envolviendo `res.json`, así que la espera queda después del `COMMIT` |
+
+**Corrección al prompt (mutación de T-API-24):**
+
+| Qué pedía | Problema | Decisión |
+|---|---|---|
+| Mi prompt: quitar la censura del código en el logger debía poner en rojo la prueba de fugas | La prueba de fugas de integración sigue en verde: la primera barrera de DD-39 (no registrar cuerpos) impide que el código llegue al log, así que `redact` no se observa por ese camino | Se aplicó: la integración sobrevive, y la detectan las pruebas unitarias del logger de T-API-03 (`codigo` y `codigoSimulado` en tres niveles), que son el seam de la segunda barrera |
+
+**Decisiones de implementación (T-API-24):**
+- `plataforma/http/demo-latencia.ts`: con `DEMO_LATENCIA_MS = 0` no envuelve nada. También retrasa los `422` de esas rutas, porque salen por el mismo `res.json`.
+- La prueba de latencia consulta la base cada 10 ms mientras la petición sigue en vuelo y exige que la fila aplicada exista al menos 150 ms antes de la respuesta, al crear y al confirmar.
+- La prueba de fugas recorre 18 peticiones: registro con bienvenida, login fallido, login web y móvil, refresh por cookie y por cuerpo, reúso, login de un segundo usuario, consulta de cuentas, alta de beneficiario, transferencia normal, con código, confirmación fallida y correcta, rechazo por saldo y logout. Las peticiones autenticadas mandan `Authorization` y `Cookie`, y el login y el refresh web reciben `Set-Cookie`. El código se busca como valor aislado (sin un carácter hexadecimal ni un guion a los lados), para no confundirlo con seis dígitos dentro de un uuid.
+- Revisión del catálogo de §10.2: los flujos dejan los 11 tipos, todos con `request_id` y sin secretos en `datos`. El tipo `TipoEvento` y el `CHECK` de la migración 5 coinciden con la tabla; no hizo falta corregir nada.
+- Mutaciones: (c) sin `codigo` ni `codigoSimulado` en `redact`: verde en integración y roja en las dos unitarias (ver la corrección al prompt); (d) la espera antes del caso de uso: roja, con la fila apareciendo 11 ms después de la respuesta en vez de 150 ms antes.
+- La integración completa cayó cuatro veces con un worker en `0xC0000409` ("during started state"), siempre en archivos que esta tarea no toca. `HEAD` limpio pasó dos veces, pero el mismo árbol con el código de `HEAD` y sin las pruebas nuevas también cayó, así que no depende del código de la tarea. La quinta corrida pasó completa (32 archivos, 244 pruebas). Es el problema de entorno que ya documenta el README.
+
+**Commits relacionados (T-API-24):** `de5128f` (H2) y el de T-API-24.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

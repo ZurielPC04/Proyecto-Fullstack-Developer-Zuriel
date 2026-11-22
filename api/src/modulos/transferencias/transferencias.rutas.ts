@@ -27,10 +27,16 @@ export const esquemasConfirmarTransferencia = {
 export function rutasTransferencias(
   controlador: ControladorTransferencias,
   autenticar: RequestHandler,
+  /** Middleware 11 de §2.2: solo en los dos POST, antes del controlador (D-17). */
+  demoLatencia: RequestHandler,
 ): Router {
   const router = Router();
-  router.post('/transferencias', autenticar, validar(esquemasCrearTransferencia), (req, res) =>
-    controlador.crear(req, res),
+  router.post(
+    '/transferencias',
+    autenticar,
+    validar(esquemasCrearTransferencia),
+    demoLatencia,
+    (req, res) => controlador.crear(req, res),
   );
   router.get(
     '/transferencias/:transferenciaId',
@@ -42,6 +48,7 @@ export function rutasTransferencias(
     '/transferencias/:transferenciaId/confirmar',
     autenticar,
     validar(esquemasConfirmarTransferencia),
+    demoLatencia,
     (req, res) => controlador.confirmar(req, res),
   );
   return router;

@@ -2,6 +2,7 @@ import type { Router } from 'express';
 import type { DependenciasApp } from '../../app.js';
 import { crearConTransaccion } from '../../plataforma/db/unidad-de-trabajo.js';
 import { crearAutenticar } from '../../plataforma/http/autenticar.js';
+import { demoLatencia } from '../../plataforma/http/demo-latencia.js';
 import { crearCasosUsoTransferencias } from './transferencias.casos-uso.js';
 import { crearControladorTransferencias } from './transferencias.controlador.js';
 import { rutasTransferencias } from './transferencias.rutas.js';
@@ -18,5 +19,9 @@ export function crearModuloTransferencias(dependencias: DependenciasApp): Router
     umbralCentavos: config.UMBRAL_CODIGO_CENTAVOS,
     secretoOtp: config.OTP_HMAC_SECRETO,
   });
-  return rutasTransferencias(crearControladorTransferencias(casos), crearAutenticar(config));
+  return rutasTransferencias(
+    crearControladorTransferencias(casos),
+    crearAutenticar(config),
+    demoLatencia(config.DEMO_LATENCIA_MS),
+  );
 }
