@@ -5,7 +5,7 @@ import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { crearTokens } from '../../../src/plataforma/seguridad/tokens.js';
 import { configDePrueba } from '../../apoyo/app.js';
-import { appReal } from '../apoyo/app-real.js';
+import { appReal, type AppReal } from '../apoyo/app-real.js';
 import { abrirDataSource } from '../apoyo/base.js';
 import { validarRespuesta } from '../apoyo/contrato.js';
 import { crearUsuarioConCuentas, type UsuarioDePrueba } from '../apoyo/fabricas.js';
@@ -26,7 +26,7 @@ const tokens = crearTokens(configDePrueba().JWT_SECRETO);
 const autorizacion = async (usuarioId: string) =>
   `Bearer ${(await tokens.emitirAccess(usuarioId)).token}`;
 
-type App = ReturnType<typeof appReal>['app'];
+type App = AppReal['app'];
 
 async function alta(app: App, usuarioId: string | undefined, cuerpo: object) {
   let peticion = request(app).post('/api/beneficiarios');
@@ -93,7 +93,7 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
   });
 
   it('R-3.1 R-3.6 D-19: crea el beneficiario ligado a la cuenta de la CLABE; la respuesta solo trae lo que capturó el usuario, sin datos del titular, y se audita', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const usuario = await crearUsuarioConCuentas(dataSource);
     const clabe = await clabeDe(beto.principalId);
 
@@ -128,7 +128,7 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
   });
 
   it('R-3.2 R-3.3 R-3.4 R-3.5: valida la CLABE en orden (18 dígitos, dígito verificador, pertenencia) y reporta el primer fallo', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const usuario = await crearUsuarioConCuentas(dataSource);
     const deBeto = await clabeDe(beto.principalId);
     // Los 17 primeros dígitos son de una cuenta real: el dígito verificador falla antes que la pertenencia.
@@ -179,7 +179,7 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
   });
 
   it('R-3.5 R-2.3 D-02: la CLABE de Fondeo responde 422 clabe-not-found, igual que una inexistente, y no crea nada', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const usuario = await crearUsuarioConCuentas(dataSource);
 
     const fondeo = await alta(app, usuario.usuarioId, {
@@ -200,7 +200,7 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
   });
 
   it('R-3.7 DD-23: la misma CLABE o el mismo alias (sin distinguir mayúsculas) responden 409 beneficiario-duplicado con su campo', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const usuario = await crearUsuarioConCuentas(dataSource);
     const clabeBeto = await clabeDe(beto.principalId);
     const clabeAna = await clabeDe(ana.principalId);
@@ -235,7 +235,7 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
   });
 
   it('R-3.7: la unicidad es por usuario; otro usuario puede registrar la misma CLABE y el mismo alias', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const [uno, dos] = [
       await crearUsuarioConCuentas(dataSource),
       await crearUsuarioConCuentas(dataSource),
@@ -249,7 +249,7 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
   });
 
   it('R-3.8 DD-26: una CLABE propia se permite y responde esCuentaPropia: true', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const clabe = await clabeDe(ana.ahorroId);
 
     const respuesta = await alta(app, ana.usuarioId, { nombre: 'Mi ahorro', alias: 'ahorro', clabe });
@@ -265,7 +265,7 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
   });
 
   it('R-1.11: sin access responde 401 y no crea nada', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
 
     const respuesta = await alta(app, undefined, {
       nombre: 'Beto',
@@ -278,7 +278,7 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
   });
 
   it('R-3.9 RNF-04: la 11.ª alta del mismo usuario en la hora responde 429 y no crea el beneficiario', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const usuario = await crearUsuarioConCuentas(dataSource);
     // Toda petición cuenta (§11), también las que no pasan la validación.
     for (let i = 0; i < 10; i++) {
@@ -300,7 +300,7 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
 
 describe('GET /api/beneficiarios y /api/beneficiarios/{beneficiarioId} (T-API-16)', () => {
   it('R-3.11 DD-26: lista solo los propios, ordenados por alias sin distinguir mayúsculas, con esCuentaPropia', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const ana = await crearUsuarioConCuentas(dataSource);
     const beto = await crearUsuarioConCuentas(dataSource);
     const [clabeBeto, clabeAhorroAna, clabeAna] = await Promise.all([
@@ -330,7 +330,7 @@ describe('GET /api/beneficiarios y /api/beneficiarios/{beneficiarioId} (T-API-16
   });
 
   it('R-3.11 D-10: un beneficiario propio se consulta; uno ajeno y uno inexistente responden el mismo 404', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const ana = await crearUsuarioConCuentas(dataSource);
     const beto = await crearUsuarioConCuentas(dataSource);
     const creado = await alta(app, ana.usuarioId, {
@@ -358,7 +358,7 @@ describe('GET /api/beneficiarios y /api/beneficiarios/{beneficiarioId} (T-API-16
   });
 
   it('R-3.11: un beneficiarioId que no es uuid responde 400 con el campo params.beneficiarioId', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const ana = await crearUsuarioConCuentas(dataSource);
 
     const respuesta = await obtener(app, ana.usuarioId, 'no-es-uuid');

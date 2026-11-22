@@ -63,17 +63,17 @@ function rutaProtegida(dependencias: DependenciasApp, vistos: Visto[]) {
   });
 }
 
-function armar(opciones: { reloj?: Reloj } = {}) {
+async function armar(opciones: { reloj?: Reloj } = {}) {
   const { cuenta, contrasenas } = contadorContrasenas();
   const vistos: Visto[] = [];
-  const { app, salidaLog } = appReal(dataSource, {
+  const { app, salidaLog } = await appReal(dataSource, {
     reloj: opciones.reloj,
     modulos: (deps) => [crearModuloIdentidad(deps, { contrasenas }), rutaProtegida(deps, vistos)],
   });
   return { app, cuenta, vistos, salidaLog };
 }
 
-type App = ReturnType<typeof armar>['app'];
+type App = Awaited<ReturnType<typeof armar>>['app'];
 
 interface Envio {
   body?: object;
@@ -151,7 +151,7 @@ const eventos = (tipo: string) =>
 
 describe('POST /api/auth/login (T-API-13)', () => {
   it('R-1.6 R-1.13 DD-24: con cliente web el refresh va solo en la cookie HttpOnly, Secure, SameSite=Strict, Path=/api/auth', async () => {
-    const { app, salidaLog } = armar();
+    const { app, salidaLog } = await armar();
     const { correo, usuarioId } = await registrar(app);
 
     const respuesta = await entrar(app, 'web', correo);
@@ -190,7 +190,7 @@ describe('POST /api/auth/login (T-API-13)', () => {
   });
 
   it('R-1.6 DD-29: el access es HS256 con sub, iss, aud y 15 minutos de vida', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const { correo, usuarioId } = await registrar(app);
 
     const respuesta = await entrar(app, 'movil', correo);
@@ -206,7 +206,7 @@ describe('POST /api/auth/login (T-API-13)', () => {
   });
 
   it('R-1.6 DD-24: con cliente movil el refresh va en el cuerpo y no hay cookie', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const { correo } = await registrar(app);
 
     const respuesta = await entrar(app, 'movil', correo);
@@ -217,7 +217,7 @@ describe('POST /api/auth/login (T-API-13)', () => {
   });
 
   it('R-1.7 DD-28: correo inexistente y contraseña incorrecta dan el mismo 401 credenciales-invalidas y verifican argon2 una vez cada uno', async () => {
-    const { app, cuenta } = armar();
+    const { app, cuenta } = await armar();
     const { correo, usuarioId } = await registrar(app);
     // El hash ficticio se calcula al construir el módulo, antes de cualquier login.
     expect(cuenta.hashes).toBe(2);
@@ -247,7 +247,7 @@ describe('POST /api/auth/login (T-API-13)', () => {
 
 describe('POST /api/auth/refresh (T-API-13)', () => {
   it('R-1.8 DD-30: rota en la misma familia, marca el anterior como usado y hereda el mismo expira_en', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const { correo, usuarioId } = await registrar(app);
     const login = await entrar(app, 'movil', correo);
     const r1 = login.body.refreshToken as string;
@@ -271,7 +271,7 @@ describe('POST /api/auth/refresh (T-API-13)', () => {
   });
 
   it('R-1.8 R-1.13 DD-24: por cookie, con X-Requested-With, el refresh nuevo vuelve solo en la cookie', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const { correo } = await registrar(app);
     const r1 = cookieDe(await entrar(app, 'web', correo))?.valor ?? '';
 
@@ -288,7 +288,7 @@ describe('POST /api/auth/refresh (T-API-13)', () => {
   });
 
   it('R-1.9 RNF-11: el reúso revoca toda la familia, audita refresh-reuse-detected y responde 401; el hijo ya no sirve', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const { correo, usuarioId } = await registrar(app);
     const r1 = (await entrar(app, 'movil', correo)).body.refreshToken as string;
     const otraFamilia = (await entrar(app, 'movil', correo)).body.refreshToken as string;
@@ -314,7 +314,7 @@ describe('POST /api/auth/refresh (T-API-13)', () => {
   });
 
   it('R-1.10: un refresh inexistente o de una familia cerrada responde el mismo 401 unauthorized', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const { correo } = await registrar(app);
     const r1 = (await entrar(app, 'movil', correo)).body.refreshToken as string;
     expect((await enviar(app, '/auth/logout', { body: { refreshToken: r1 } })).status).toBe(204);
@@ -331,7 +331,7 @@ describe('POST /api/auth/refresh (T-API-13)', () => {
 
   it('R-1.10 DD-30: la familia vence 7 días después del login aunque se haya rotado', async () => {
     const reloj = new RelojFijo('2026-11-21 10:00:00+00');
-    const { app } = armar({ reloj });
+    const { app } = await armar({ reloj });
     const { correo } = await registrar(app);
     const r1 = cookieDe(await entrar(app, 'web', correo))?.valor ?? '';
 
@@ -354,7 +354,7 @@ describe('POST /api/auth/refresh (T-API-13)', () => {
   ])(
     'R-1.16: por cookie y %s → 400 en headers.x-requested-with, sin consumir el refresh',
     async (_caso, xrw) => {
-      const { app } = armar();
+      const { app } = await armar();
       const { correo, usuarioId } = await registrar(app);
       const r1 = cookieDe(await entrar(app, 'web', correo))?.valor ?? '';
 
@@ -371,7 +371,7 @@ describe('POST /api/auth/refresh (T-API-13)', () => {
   );
 
   it('DD-24: con cookie y cuerpo a la vez, o sin ninguno, responde 400 en body.refreshToken', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const { correo } = await registrar(app);
     const r1 = cookieDe(await entrar(app, 'web', correo))?.valor ?? '';
 
@@ -393,7 +393,7 @@ describe('POST /api/auth/refresh (T-API-13)', () => {
 
 describe('POST /api/auth/logout (T-API-13)', () => {
   it('R-1.12: por cookie revoca la familia, audita sesion-cerrada, borra la cookie y responde 204', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const { correo, usuarioId } = await registrar(app);
     const r1 = cookieDe(await entrar(app, 'web', correo))?.valor ?? '';
 
@@ -421,7 +421,7 @@ describe('POST /api/auth/logout (T-API-13)', () => {
   });
 
   it('R-1.12 DD-24: responde 204 y borra la cookie aunque el refresh sea inválido o no llegue', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const antes = (await eventos('sesion-cerrada')).length;
 
     const invalido = await enviar(app, '/auth/logout', {
@@ -437,7 +437,7 @@ describe('POST /api/auth/logout (T-API-13)', () => {
   });
 
   it('R-1.16: por cookie sin X-Requested-With responde 400 y no revoca nada', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const { correo, usuarioId } = await registrar(app);
     const r1 = cookieDe(await entrar(app, 'web', correo))?.valor ?? '';
 
@@ -468,7 +468,7 @@ describe('autenticar (T-API-13)', () => {
   });
 
   it('R-1.11 DD-38: con un access válido pasa, pone usuarioId en la petición y en el contexto, y responde no-store', async () => {
-    const { app, vistos } = armar();
+    const { app, vistos } = await armar();
     const { correo, usuarioId } = await registrar(app);
     const { accessToken } = (await entrar(app, 'movil', correo)).body as { accessToken: string };
 
@@ -480,7 +480,7 @@ describe('autenticar (T-API-13)', () => {
   });
 
   it('DD-29: tolera 5 s de desfase de reloj en exp', async () => {
-    const { app } = armar();
+    const { app } = await armar();
     const token = await firmar(
       valido('00000000-0000-4000-8000-000000000001', { exp: ahora() - 3 }),
     );
@@ -489,7 +489,7 @@ describe('autenticar (T-API-13)', () => {
   });
 
   it('R-1.11 RNF-02 DD-29: cualquier fallo responde el mismo 401 unauthorized con no-store', async () => {
-    const { app, vistos } = armar();
+    const { app, vistos } = await armar();
     const id = '00000000-0000-4000-8000-000000000001';
     const otroSecreto = new TextEncoder().encode('x'.repeat(32));
     const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');

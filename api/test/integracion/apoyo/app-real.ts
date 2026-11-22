@@ -14,11 +14,21 @@ import { configDePrueba } from '../../apoyo/app.js';
 export interface OpcionesAppReal {
   config?: Partial<Config>;
   reloj?: Reloj;
-  /** Si se pasa, reemplaza a crearModulos: recibe las dependencias ya armadas. */
-  modulos?: (dependencias: DependenciasApp) => Router[];
+  /**
+   * Si se pasa, reemplaza a crearModulos: recibe las dependencias ya armadas. Puede devolver
+   * routers o promesas de router (p. ej. `crearModuloIdentidad(deps, …)`); se esperan todas.
+   */
+  modulos?: (
+    dependencias: DependenciasApp,
+  ) => (Router | Promise<Router>)[] | Promise<Router[]>;
 }
 
-export function appReal(dataSource: DataSource, opciones: OpcionesAppReal = {}) {
+/**
+ * Igual que arranque.ts, espera a que los módulos estén listos antes de devolver la app. Así
+ * ningún trabajo nativo (el hash ficticio de argon2) sigue en vuelo cuando el archivo termina
+ * y Vitest cierra el worker.
+ */
+export async function appReal(dataSource: DataSource, opciones: OpcionesAppReal = {}) {
   const lineas: string[] = [];
   const dependencias: DependenciasApp = {
     config: configDePrueba(opciones.config),
@@ -28,6 +38,8 @@ export function appReal(dataSource: DataSource, opciones: OpcionesAppReal = {}) 
     reloj: opciones.reloj ?? new RelojBaseDatos(),
     proveedorOtp: new ProveedorOtpSimulado(),
   };
-  const modulos = (opciones.modulos ?? crearModulos)(dependencias);
+  const modulos = await Promise.all(await (opciones.modulos ?? crearModulos)(dependencias));
   return { app: crearApp(dependencias, modulos), dependencias, salidaLog: () => lineas.join('') };
 }
+
+export type AppReal = Awaited<ReturnType<typeof appReal>>;

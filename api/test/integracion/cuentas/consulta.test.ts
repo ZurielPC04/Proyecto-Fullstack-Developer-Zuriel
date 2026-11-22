@@ -4,7 +4,7 @@ import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { crearTokens } from '../../../src/plataforma/seguridad/tokens.js';
 import { configDePrueba } from '../../apoyo/app.js';
-import { appReal } from '../apoyo/app-real.js';
+import { appReal, type AppReal } from '../apoyo/app-real.js';
 import { abrirDataSource } from '../apoyo/base.js';
 import { validarRespuesta } from '../apoyo/contrato.js';
 import { crearUsuarioConCuentas, fondear, FONDEO_ID } from '../apoyo/fabricas.js';
@@ -24,7 +24,7 @@ const tokens = crearTokens(configDePrueba().JWT_SECRETO);
 const autorizacion = async (usuarioId: string) =>
   `Bearer ${(await tokens.emitirAccess(usuarioId)).token}`;
 
-type App = ReturnType<typeof appReal>['app'];
+type App = AppReal['app'];
 
 async function listar(app: App, usuarioId?: string) {
   let peticion = request(app).get('/api/cuentas');
@@ -54,7 +54,7 @@ const clabesDe = async (usuarioId: string) =>
 
 describe('GET /api/cuentas (T-API-15)', () => {
   it('R-2.1 R-2.3: devuelve solo las cuentas propias, Principal y después Ahorro, con saldo en centavos enteros; nunca Fondeo ni cuentas ajenas', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const ana = await crearUsuarioConCuentas(dataSource);
     const beto = await crearUsuarioConCuentas(dataSource);
     await fondear(dataSource, ana.principalId, 123_456);
@@ -80,7 +80,7 @@ describe('GET /api/cuentas (T-API-15)', () => {
   });
 
   it('R-1.11: sin access responde 401', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
 
     const respuesta = await listar(app);
 
@@ -91,7 +91,7 @@ describe('GET /api/cuentas (T-API-15)', () => {
 
 describe('GET /api/cuentas/{cuentaId} (T-API-15)', () => {
   it('R-2.1: devuelve una cuenta propia con su saldo en centavos enteros', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const ana = await crearUsuarioConCuentas(dataSource);
     await fondear(dataSource, ana.ahorroId, 50_001);
 
@@ -108,7 +108,7 @@ describe('GET /api/cuentas/{cuentaId} (T-API-15)', () => {
   });
 
   it('R-2.4 D-10: una cuenta ajena y una inexistente responden el mismo 404 not-found', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const ana = await crearUsuarioConCuentas(dataSource);
     const beto = await crearUsuarioConCuentas(dataSource);
 
@@ -127,7 +127,7 @@ describe('GET /api/cuentas/{cuentaId} (T-API-15)', () => {
   });
 
   it('R-2.3 R-2.4: la cuenta Fondeo responde el mismo 404 not-found', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const ana = await crearUsuarioConCuentas(dataSource);
 
     const fondeo = await obtener(app, ana.usuarioId, FONDEO_ID);
@@ -138,7 +138,7 @@ describe('GET /api/cuentas/{cuentaId} (T-API-15)', () => {
   });
 
   it('R-2.4: un cuentaId que no es uuid responde 400 con el campo params.cuentaId', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const ana = await crearUsuarioConCuentas(dataSource);
 
     const respuesta = await obtener(app, ana.usuarioId, 'no-es-uuid');

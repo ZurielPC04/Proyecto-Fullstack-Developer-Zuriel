@@ -24,7 +24,7 @@ export interface DependenciasArranque {
   escuchar: (app: Express, puerto: number) => Promise<unknown>;
 }
 
-/** design.md §2.4: configuración → base de datos → listen. */
+/** design.md §2.4: configuración → base de datos → módulos listos → listen. */
 export async function arrancar(dependencias: DependenciasArranque): Promise<void> {
   const { env, logger, proceso, conectarBase, escuchar } = dependencias;
 
@@ -48,5 +48,7 @@ export async function arrancar(dependencias: DependenciasArranque): Promise<void
     reloj: new RelojBaseDatos(),
     proveedorOtp: elegirProveedorOtp(config),
   };
-  await escuchar(crearApp(dependenciasApp, crearModulos(dependenciasApp)), config.PORT);
+  // R-1.7: los módulos quedan listos (hash ficticio calculado) antes de listen.
+  const modulos = await crearModulos(dependenciasApp);
+  await escuchar(crearApp(dependenciasApp, modulos), config.PORT);
 }

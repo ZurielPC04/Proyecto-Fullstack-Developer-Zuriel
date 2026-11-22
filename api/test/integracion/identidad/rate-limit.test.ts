@@ -8,7 +8,7 @@ import { crearAutenticar } from '../../../src/plataforma/http/autenticar.js';
 import { limiteAltaBeneficiarios } from '../../../src/plataforma/http/limites.js';
 import { crearTokens } from '../../../src/plataforma/seguridad/tokens.js';
 import { configDePrueba } from '../../apoyo/app.js';
-import { appReal } from '../apoyo/app-real.js';
+import { appReal, type AppReal } from '../apoyo/app-real.js';
 import { abrirDataSource } from '../apoyo/base.js';
 import { validarRespuesta } from '../apoyo/contrato.js';
 import { clabeAleatoria } from '../apoyo/fabricas.js';
@@ -28,7 +28,7 @@ const CONTRASENA = 'una frase larga y propia';
 let contador = 0;
 const correoNuevo = () => `limite-${Date.now()}-${contador++}@prueba.mx`;
 
-type App = ReturnType<typeof appReal>['app'];
+type App = AppReal['app'];
 
 async function registrar(app: App, cuerpo: object, xff?: string) {
   let peticion = request(app).post('/api/auth/registro');
@@ -67,7 +67,7 @@ const usuariosConCorreo = async (correo: string) =>
 
 describe('rate limit de registro (T-API-14)', () => {
   it('R-1.18 RNF-04: el 6.º registro desde la misma IP responde 429 y no crea el usuario', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     for (let i = 0; i < 5; i++) {
       const respuesta = await registrar(app, { correo: correoNuevo(), contrasena: CONTRASENA });
       expect(respuesta.status).toBe(201);
@@ -83,7 +83,7 @@ describe('rate limit de registro (T-API-14)', () => {
   });
 
   it('R-1.18 §11: con TRUST_PROXY=0 un X-Forwarded-For inventado no esquiva el límite', async () => {
-    const { app } = appReal(dataSource, { config: { TRUST_PROXY: 0 } });
+    const { app } = await appReal(dataSource, { config: { TRUST_PROXY: 0 } });
     for (let i = 0; i < 5; i++) {
       const respuesta = await registrar(app, { correo: correoNuevo(), contrasena: CONTRASENA });
       expect(respuesta.status).toBe(201);
@@ -102,7 +102,7 @@ describe('rate limit de registro (T-API-14)', () => {
 
   it('R-1.18 §11: una IPv6 cuenta por su subred /56; otra /56 tiene su propio límite', async () => {
     // Detrás de un proxy confiable, la IP del cliente es la última entrada de X-Forwarded-For.
-    const { app } = appReal(dataSource, { config: { TRUST_PROXY: 1 } });
+    const { app } = await appReal(dataSource, { config: { TRUST_PROXY: 1 } });
     // Cuerpo inválido: el 400 también cuenta y no cuesta un hash.
     for (let i = 0; i < 5; i++) {
       const respuesta = await registrar(app, {}, `2001:db8:abcd:1200::${i + 1}`);
@@ -119,7 +119,7 @@ describe('rate limit de registro (T-API-14)', () => {
 
 describe('rate limit de login (T-API-14)', () => {
   it('R-1.18 RNF-04: la petición 21 desde la misma IP responde 429; sin correo solo cuenta el límite por IP', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     // Sin correo en el cuerpo: si contaran en el límite por correo (5), la 6.ª ya sería 429.
     for (let i = 0; i < 20; i++) {
       const respuesta = await login(app, i % 2 === 0 ? {} : { correo: 123, contrasena: 'x' });
@@ -130,7 +130,7 @@ describe('rate limit de login (T-API-14)', () => {
   });
 
   it('R-1.18 §11: 5 fallos con el mismo correo normalizado bloquean el 6.º intento, aunque sea correcto; otro correo no se ve afectado', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const correo = correoNuevo();
     const otro = correoNuevo();
     for (const c of [correo, otro]) {
@@ -156,7 +156,7 @@ describe('rate limit de login (T-API-14)', () => {
   });
 
   it('R-1.18 §11: un login correcto no consume el límite por correo (skipSuccessfulRequests)', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const correo = correoNuevo();
     expect((await registrar(app, { correo, contrasena: CONTRASENA })).status).toBe(201);
 
@@ -196,7 +196,7 @@ function altaDePrueba(dependencias: DependenciasApp, atendidas: string[]) {
 describe('rate limit del alta de beneficiarios (T-API-14)', () => {
   it('R-3.9 RNF-04: la 11.ª alta en la hora del mismo usuario responde 429 sin atenderse; otro usuario no se ve afectado', async () => {
     const atendidas: string[] = [];
-    const { app } = appReal(dataSource, {
+    const { app } = await appReal(dataSource, {
       // Solo la ruta de prueba: la real (T-API-16) tiene su propia prueba de R-3.9.
       modulos: (deps) => [altaDePrueba(deps, atendidas)],
     });

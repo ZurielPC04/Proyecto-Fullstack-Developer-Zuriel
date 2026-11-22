@@ -535,7 +535,7 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - El validador del contrato trataba como cuerpo el `{}` que Supertest entrega en un `204`; ahora un `{}` sin `Content-Type` cuenta como ausencia de cuerpo.
 - Mutaciones, todas rojas: (b) login sin el hash ficticio, por el conteo de verificaciones; (c) reúso sin revocar, porque la familia queda viva; (d) cookie sin `HttpOnly` y, por separado, con `SameSite=Lax`, en las tres pruebas de la cookie; (e) `jwtVerify` sin `algorithms`, por el token HS512.
 
-**Caídas del worker (`0xC0000409`):** en esta sesión fueron cada vez más frecuentes en las corridas completas, en archivos distintos, sin ninguna prueba fallida. Al final de T-API-13 la máquina tenía 1.7 GB libres de 16 GB. En Windows, `abort()` termina con `0xC0000409`, lo que apunta a Node abortando por falta de memoria más que a un defecto del código. La suite completa pasó dos de dos veces con `--pool=threads`. Con la configuración real (`forks`) se verificó en dos mitades: 20 archivos y 162 pruebas en verde. No cambié la configuración de Vitest porque ninguna tarea lo cubre; queda como propuesta.
+**Caídas del worker (`0xC0000409`):** en esta sesión fueron cada vez más frecuentes en las corridas completas, en archivos distintos, sin ninguna prueba fallida. Con la configuración real (`forks`) se verificó en dos mitades: 20 archivos y 162 pruebas en verde. _Corregido en la sesión 20:_ aquí se atribuyeron a falta de memoria, pero la causa de las que coincidían con este código era el hash ficticio de T-API-13, que se lanzaba sin esperar. Ver "Corrección: hash ficticio sin esperar" en la sesión 20.
 
 **Commits relacionados (T-API-13):** `2baca95` (`X-Requested-With`, canales del refresh y el `Reloj` en la sesión) y el de T-API-13.
 
@@ -543,7 +543,7 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó §2.1, §2.2, §3.2, §3.6, §7.2, §7.3, §11, D-10, D-19, DD-23, DD-26, DD-41 y el contrato de cuentas y beneficiarios, y propuso un solo plan para las tres tareas con sus seams y cuatro huecos (H1 a H4). Lo aprobé una vez, con un cambio en H1.
 
-**Decisión sobre las pruebas (paso previo):** la integración corre con `pool: 'threads'`, conservando `fileParallelism: false`. Las corridas completas con `forks` caían en Windows con `0xC0000409` sin ninguna prueba fallida (sesión 19). Con hilos, tres corridas completas seguidas pasaron: 20 archivos y 162 pruebas cada una. No cambia ningún requerimiento.
+**Decisión sobre las pruebas (paso previo):** la integración pasó a `pool: 'threads'`, conservando `fileParallelism: false`, porque las corridas completas con `forks` caían con `0xC0000409` (sesión 19); con hilos pasaron tres corridas seguidas. _Revertida en esta misma sesión:_ los hilos no aportaron estabilidad (las caídas siguieron) y se volvió a `forks`, donde un aborto informa el archivo. La causa era otra (ver "Corrección: hash ficticio sin esperar", abajo). No cambia ningún requerimiento.
 
 **Corrección al prompt (plan):**
 
@@ -563,7 +563,7 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - El límite del alta de beneficiarios se prueba en esta tarea con una ruta de prueba de la forma de `POST /beneficiarios` (`autenticar` → limitador → `201`). T-API-16 lo monta en la ruta real.
 - La IPv6 se prueba con `TRUST_PROXY=1` y `X-Forwarded-For`: dos direcciones de la misma `/56` comparten el contador y una de otra `/56` no.
 - Mutaciones, las dos rojas: (a) `trust proxy` en `true`, porque un `X-Forwarded-For` inventado esquivaba el límite de registro (`201` en vez de `429`); (b) sin `skipSuccessfulRequests`, porque 5 logins correctos agotaban el límite y el primer fallo ya respondía `429`.
-- Al correr las seis verificaciones en paralelo, unitarias e integración cayeron con `0xC0000409`; corridas solas pasaron (152 y 169). Desde entonces se corren en serie.
+- Las verificaciones se corren en serie, un comando a la vez.
 
 **Commits relacionados (T-API-14):** `c9aee46` (§11) y el de T-API-14.
 
@@ -579,8 +579,6 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - `shared` ahora exporta `uuid()` (§6.7), para que `params.cuentaId` use la misma regla que `format: uuid` del contrato.
 - Las consultas corren dentro de `conTransaccion` para heredar `statement_timeout` y la traducción de errores a `503` (§2.3).
 - Mutación (c), quitar el filtro por usuario: roja. La primera versión, que quitaba también `tipo = 'USUARIO'`, la detectaba Ajv por Fondeo (saldo negativo y nombre fuera del enum). Para probar que la cuenta ajena basta, se repitió conservando `tipo = 'USUARIO'`, y la detectó la comparación exacta de la lista.
-- Una corrida de un solo archivo cayó con `0xC0000409`, también con hilos y sin nada en paralelo; la repetición pasó. La caída sigue siendo intermitente.
-
 **Commits relacionados (T-API-15):** `bcc2d37` (orden de las cuentas) y el de T-API-15.
 
 **Correcciones a los requerimientos (T-API-16):**
@@ -597,9 +595,21 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - El alta audita `beneficiario-creado` con `{ beneficiarioId, clabe: enmascarada }` en la misma transacción (DD-40).
 - Ruta: `autenticar` → limitador por `usuarioId` → `validar`. La prueba de R-3.9 manda 10 cuerpos inválidos (todos cuentan, §11), y la 11.ª alta, válida, da `429` sin crear la fila. La prueba de T-API-14 que montaba su ruta después de `crearModulos` empezó a recibir la ruta real; ahora monta solo la suya.
 - Mutaciones, las dos rojas: (d) el caso de uso agrega el correo del dueño de la cuenta destino y el controlador responde el objeto sin filtrar, y fallan tres pruebas por las claves exactas; (e) la búsqueda sin `tipo = 'USUARIO'`, y la CLABE de Fondeo responde `500` en vez de `422`, porque el trigger `validar_beneficiario` de la base la rechaza (la segunda red). Desde la mutación (c), las mutaciones se aplican y revierten con la herramienta de edición, y el hash se verifica con `sha256sum` en un comando aparte, por indicación mía.
-- Dos corridas más cayeron con `0xC0000409` (un archivo, con hilos, sin nada en paralelo) y pasaron al repetirse. `pool: 'threads'` redujo las caídas, pero no las eliminó.
 
 **Commits relacionados (T-API-16):** `17e8236` (campo del `409` y orden de la lista) y el de T-API-16.
+
+**Corrección: hash ficticio sin esperar (después de T-API-16):**
+
+| Qué pasaba | Causa | Corrección |
+|---|---|---|
+| El job `integracion` del CI en Linux terminó con `terminate called after throwing an instance of 'Napi::Error'` / `Aborted (core dumped)` después de `beneficiarios.test.ts`; en Windows, la reproducción de este aborto termina con `0xC0000409` | `crearCasosUsoIdentidad` (T-API-13) lanzaba el hash ficticio de argon2 al crear el módulo y nadie lo esperaba hasta el primer login. Cada app de prueba que no hacía login, y la prueba unitaria de `arrancar`, dejaba un argon2 nativo en vuelo. Si el archivo terminaba antes, Vitest cerraba el worker, el callback de N-API lanzaba `Napi::Error` y el proceso abortaba. Además, en producción, el primer login con un correo inexistente justo después de arrancar esperaba también ese hash y podía tardar más que uno con contraseña incorrecta: no igualaba el tiempo (R-1.7) | `crearCasosUsoIdentidad`, `crearModuloIdentidad` y `crearModulos` son asíncronas y esperan el hash; `arrancar` las espera antes de `listen`, y `appReal` antes de devolver la app. Si el hash falla, falla el arranque y no un login |
+
+- **Atribución:** el log del CI en Linux dio la pista. Claude Code lo confirmó leyendo el código y con una reproducción: un archivo temporal que creaba 30 apps sin esperar abortó en dos de tres corridas, y ninguna vez con la corrección. Yo decidí la corrección y la vuelta a `forks`.
+- No queda ninguna otra llamada a argon2 sin esperar, ni en el código ni en las pruebas.
+- Pruebas nuevas, las dos rojas con la mutación "hash sin esperar": `arranque-hash-ficticio.test.ts` (unitaria: base → hash ficticio → `escuchar`) y `arnes/app-real.test.ts` (al resolver `appReal`, el hash ya terminó).
+- La sesión 19 lo había atribuido a falta de memoria, y el paso previo de esta sesión cambió el pool por eso. Las dos cosas se corrigieron arriba.
+
+**Commits relacionados (corrección):** el de `fix(api)` del hash ficticio.
 
 ---
 

@@ -7,10 +7,12 @@ import { crearModuloIdentidad } from './identidad/index.js';
 /**
  * DD-08: la composición de los routers de negocio vive aquí, en un solo lugar.
  * Cada tarea de módulo agrega el suyo (identidad, cuentas, beneficiarios…).
+ * Asíncrona: resuelve cuando los módulos están listos para atender (el hash ficticio de
+ * identidad, R-1.7); quien la llama la espera antes de abrir el puerto.
  */
-export function crearModulos(dependencias: DependenciasApp): Router[] {
+export async function crearModulos(dependencias: DependenciasApp): Promise<Router[]> {
   return [
-    crearModuloIdentidad(dependencias),
+    await crearModuloIdentidad(dependencias),
     crearModuloCuentas(dependencias),
     crearModuloBeneficiarios(dependencias),
   ];

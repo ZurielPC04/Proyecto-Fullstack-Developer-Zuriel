@@ -57,7 +57,11 @@ export interface SesionAbierta {
 /** §5.3: el reúso y los demás rechazos son resultado, no excepción, para confirmar antes del 401. */
 export type ResultadoRefresh = { ok: true; sesion: SesionAbierta } | { ok: false };
 
-export function crearCasosUsoIdentidad(dependencias: DependenciasIdentidad) {
+/**
+ * Asíncrona porque calcula el hash ficticio antes de devolver los casos de uso: así ningún
+ * argon2 queda corriendo sin que nadie lo espere (ver abajo).
+ */
+export async function crearCasosUsoIdentidad(dependencias: DependenciasIdentidad) {
   const {
     conTransaccion,
     contrasenas,
@@ -71,8 +75,11 @@ export function crearCasosUsoIdentidad(dependencias: DependenciasIdentidad) {
 
   // §5.1 y R-1.7: hash ficticio calculado al arrancar con los mismos parámetros. Un correo
   // inexistente se verifica contra él, para tardar lo mismo que una contraseña incorrecta.
-  const hashFicticio = contrasenas.hash(randomBytes(32).toString('base64url'));
-  hashFicticio.catch(() => undefined); // si falla, el login lo propaga como 500.
+  // Se espera aquí, antes de atender peticiones: ya está listo en el primer login, y no
+  // queda un argon2 nativo en vuelo. Si el proceso o el worker de Vitest terminan con uno
+  // pendiente, su callback de N-API lanza Napi::Error y aborta (0xC0000409 / core dumped).
+  // Si el hash falla, falla el arranque, no un login.
+  const hashFicticio = await contrasenas.hash(randomBytes(32).toString('base64url'));
 
   async function emitir(
     usuarioId: string,
@@ -128,7 +135,7 @@ export function crearCasosUsoIdentidad(dependencias: DependenciasIdentidad) {
       const usuario = await conTransaccion((tx) => buscarUsuarioPorCorreo(tx, correo));
       // Siempre exactamente una verificación argon2, con el hash real o con el ficticio.
       const coincide = await contrasenas.verificar(
-        usuario?.hashContrasena ?? (await hashFicticio),
+        usuario?.hashContrasena ?? hashFicticio,
         contrasena,
       );
       if (!usuario || !coincide) {
@@ -223,4 +230,4 @@ export function crearCasosUsoIdentidad(dependencias: DependenciasIdentidad) {
   };
 }
 
-export type CasosUsoIdentidad = ReturnType<typeof crearCasosUsoIdentidad>;
+export type CasosUsoIdentidad = Awaited<ReturnType<typeof crearCasosUsoIdentidad>>;

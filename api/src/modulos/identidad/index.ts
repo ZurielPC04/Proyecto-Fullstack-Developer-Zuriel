@@ -15,13 +15,16 @@ export interface OpcionesIdentidad {
   generarClabe?: GenerarClabe;
 }
 
-/** DD-08: composición del módulo identidad (casos de uso → controlador → rutas). */
-export function crearModuloIdentidad(
+/**
+ * DD-08: composición del módulo identidad (casos de uso → controlador → rutas). Resuelve
+ * cuando el hash ficticio de R-1.7 ya está calculado.
+ */
+export async function crearModuloIdentidad(
   dependencias: DependenciasApp,
   opciones: OpcionesIdentidad = {},
-): Router {
+): Promise<Router> {
   const { config, dataSource, logger, reloj } = dependencias;
-  const casos = crearCasosUsoIdentidad({
+  const casos = await crearCasosUsoIdentidad({
     conTransaccion: crearConTransaccion({ dataSource, logger }),
     contrasenas: opciones.contrasenas ?? contrasenasArgon2,
     transferencias: crearTransferencias({ reloj }),

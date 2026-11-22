@@ -55,7 +55,7 @@ const eventosDe = (usuarioId: string) =>
 
 describe('POST /api/auth/registro (T-API-12)', () => {
   it('R-1.1 R-1.2 DD-24: crea usuario, Principal y Ahorro con CLABE válida y el fondeo de bienvenida; responde 201 { id, correo } sin sesión', async () => {
-    const { app } = appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000_000 } });
+    const { app } = await appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000_000 } });
     const correo = correoNuevo();
 
     const respuesta = await registrar(app, {
@@ -98,7 +98,7 @@ describe('POST /api/auth/registro (T-API-12)', () => {
   });
 
   it('R-1.1 D-20: con FONDEO_BIENVENIDA_CENTAVOS = 0 no hay fondeo ni su evento', async () => {
-    const { app } = appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 0 } });
+    const { app } = await appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 0 } });
 
     const respuesta = await registrar(app, { correo: correoNuevo(), contrasena: CONTRASENA });
 
@@ -109,7 +109,7 @@ describe('POST /api/auth/registro (T-API-12)', () => {
   });
 
   it('RNF-03 DD-28: la contraseña se guarda como argon2id con los parámetros de DD-28, calculada sobre su forma NFC', async () => {
-    const { app } = appReal(dataSource);
+    const { app } = await appReal(dataSource);
     const correo = correoNuevo();
     // "é" descompuesta (e + U+0301); el hash debe verificar con la forma compuesta.
     const descompuesta = 'contraséna muy larga';
@@ -127,7 +127,7 @@ describe('POST /api/auth/registro (T-API-12)', () => {
   });
 
   it('R-1.4 DD-23: correo duplicado → 409 correo-ya-registrado y no crea nada', async () => {
-    const { app } = appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000 } });
+    const { app } = await appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000 } });
     const correo = correoNuevo();
     expect((await registrar(app, { correo, contrasena: CONTRASENA })).status).toBe(201);
     const antes = await fotografia();
@@ -155,7 +155,7 @@ describe('POST /api/auth/registro (T-API-12)', () => {
   ])(
     'R-1.5: %s → 400 validation-error con el campo, sin crear nada',
     async (_caso, cuerpo, campo) => {
-      const { app } = appReal(dataSource);
+      const { app } = await appReal(dataSource);
       const antes = await fotografia();
 
       const respuesta = await registrar(app, cuerpo);
@@ -168,7 +168,7 @@ describe('POST /api/auth/registro (T-API-12)', () => {
   );
 
   it('R-1.3 DD-40: un fallo forzado después de crear las cuentas y el fondeo no deja nada', async () => {
-    const { app } = appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000_000 } });
+    const { app } = await appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000_000 } });
     // El evento usuario-registrado se inserta después de las cuentas y del fondeo (§12.1).
     // Idempotente: si una corrida anterior murió antes del finally, la función ya existe.
     await ejecutar('dueno', async (c) => {
@@ -207,7 +207,7 @@ describe('POST /api/auth/registro (T-API-12)', () => {
     // Principal choca con la ocupada y toma la primera libre; Ahorro toma la segunda.
     const secuencia = [ocupada, ...libresValidas()];
     const generarClabe = () => secuencia.shift() ?? '';
-    const { app } = appReal(dataSource, {
+    const { app } = await appReal(dataSource, {
       modulos: (deps) => [crearModuloIdentidad(deps, { generarClabe })],
     });
 
@@ -225,7 +225,7 @@ describe('POST /api/auth/registro (T-API-12)', () => {
       [existente.principalId],
     )) as [{ clabe: string }];
     let llamadas = 0;
-    const { app } = appReal(dataSource, {
+    const { app } = await appReal(dataSource, {
       modulos: (deps) => [
         crearModuloIdentidad(deps, {
           generarClabe: () => {
