@@ -5,12 +5,12 @@ import { renderizarApp } from './utilidades';
 
 describe('esqueleto de la web', () => {
   it('RNF-19 cada pantalla tiene su h1 dentro del layout y axe no reporta violaciones', async () => {
-    const { container } = renderizarApp('/');
+    renderizarApp('/login');
 
     expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('banner')).toBeInTheDocument();
     expect(screen.getByRole('main')).toBeInTheDocument();
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await axe(document.body)).toHaveNoViolations();
   });
 
   it('una ruta inexistente muestra su propio h1', async () => {

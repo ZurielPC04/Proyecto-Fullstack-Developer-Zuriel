@@ -1,5 +1,8 @@
 import type { RouteObject } from 'react-router';
+import { RutaProtegida } from '../auth/RutaProtegida';
+import { Login } from '../pantallas/Login';
 import { NoEncontrada } from '../pantallas/NoEncontrada';
+import { Registro } from '../pantallas/Registro';
 import { Resumen } from '../pantallas/Resumen';
 import { Layout } from './Layout';
 
@@ -8,7 +11,12 @@ export const rutas: RouteObject[] = [
   {
     element: <Layout />,
     children: [
-      { path: '/', element: <Resumen /> },
+      { path: '/login', element: <Login /> },
+      { path: '/registro', element: <Registro /> },
+      {
+        element: <RutaProtegida />,
+        children: [{ path: '/', element: <Resumen /> }],
+      },
       { path: '*', element: <NoEncontrada /> },
     ],
   },

@@ -821,6 +821,30 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-WEB-01):** el de T-WEB-01.
 
+**Correcciones a los requerimientos (T-WEB-02):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| `tasks.md` T-WEB-02: "dos pestañas simuladas con un lock falso producen **un** refresh" | El access vive en la memoria de cada pestaña (R-1.13), así que la pestaña B no puede ver el que obtuvo la A: dos pestañas reales hacen dos refresh. El lock no los evita; los pone en fila para que B mande la cookie ya rotada y la API no detecte un falso reúso. La "revisión previa" solo ahorra refresh dentro de una pestaña | H1: §13.2 aclara el alcance de la revisión previa, y la verificación pide dos pruebas: misma pestaña → un refresh; dos pestañas (dos instancias del módulo, lock compartido, servidor que rota la cookie y detecta el reúso) → sin solaparse y sin reúso |
+| §13.2 no decía en qué idioma salen los mensajes por defecto de Zod | Los esquemas de `shared` dan en inglés los mensajes que no personalizan (tipo, campo faltante, `enum`), y el usuario los vería en los formularios | H2: §13.2 "Formularios": la web activa `z.config(es())` en `src/app/zod-es.ts`, importado primero en `main.tsx` y en el setup de pruebas. Lo pedí antes de T-WEB-02, porque el registro ya usa `esquemaRegistro` |
+
+**Decisiones de implementación (T-WEB-02):**
+- `src/api/http.ts`: URL absoluta con `location.origin` (el `fetch` de Node no acepta rutas relativas en jsdom), timeout de 15 s con `AbortController`, `ErrorRed` ante fallo de red o timeout, y `ErrorApi` con el problem.
+- `src/api/cliente.ts`: `api.get` y `api.post`, tipados con `paths`: la ruta, los parámetros de ruta y de query, el cuerpo y la respuesta salen del contrato. Solo un `401` con `type: unauthorized` dispara el refresh; `credenciales-invalidas` no.
+- `src/auth/sesion.ts`: el access en una variable de módulo, con `suscribirSesion` y `haySesion` para `useSyncExternalStore`. `refrescar(accessFallido)` corre dentro de `navigator.locks.request('billetera-refresh')` y no rota si el access ya cambió. El logout limpia aunque la API no responda.
+- `RutaProtegida` muestra "Verificando sesión…" hasta que termina el refresh; sin sesión, o si la sesión se pierde después, lleva a `/login`.
+- `aplicarErrorDelServidor` lleva cada error del servidor a su campo, con `errores[].campo` o un mapa por `type`, y pone el foco en ese campo. T-WEB-05 lo reutiliza.
+- El intento de `sessionStorage` usa la llave `billetera:intento` (`src/transferencia/almacen-intento.ts`), que T-WEB-06 y T-WEB-07 reutilizan.
+- MSW 3 cambió `onUnhandledRequest` por `onUnhandledFrame`. Con el nombre viejo, las peticiones no previstas solo daban un aviso; el setup usa el nuevo, así que fallan.
+- Mutaciones, cada una revertida con `sha256sum` idéntico al original:
+  - guardar el access en `sessionStorage` → roja la prueba del espía (`setItem` llamado 2 veces);
+  - quitar `navigator.locks.request` → roja la de la misma pestaña (`expected 2 to be 1` refresh) y la de dos pestañas (`[true, false]`, por reúso);
+  - permitir dos repeticiones tras `401` → roja la de repetición única (`expected 3 to be 2` peticiones).
+  La primera vez que quité el lock, la prueba de la misma pestaña falló antes de llegar al conteo, porque el segundo access no lo aceptaba el handler. La ajusté para que el refresh siempre devuelva el mismo access y el conteo se compare primero; con el original pasa.
+- Los mensajes de la política de contraseñas de `esquemaRegistro` ya eran propios y en español; el locale cubre los demás.
+
+**Commits relacionados (T-WEB-02):** `67e1dba` (H2), `18a8e1b` (H1), el de los mensajes de Zod y el de T-WEB-02.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
