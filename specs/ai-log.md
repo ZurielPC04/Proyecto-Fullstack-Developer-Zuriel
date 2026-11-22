@@ -663,7 +663,19 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - Además de los escenarios de §6.4, una prueba aplica una transferencia exactamente a las 00:00:00 y comprueba con `GET /limites` que cuenta para el día nuevo y no para el anterior.
 - Mutaciones, las dos rojas: (d) `<` → `<=` en el borde superior, y la transferencia de las 00:00:00 contó para el día anterior (1000000 en vez de 300000); (e) la ventana en `UTC`, y fallaron los dos escenarios de medianoche.
 
-**Commits relacionados (T-API-19):** `3fdf070` (escenario de la pendiente a T-API-20) y el de T-API-19.
+**Commits relacionados (T-API-19):** `3fdf070` (escenario de la pendiente a T-API-20) y `add29ac`.
+
+**Decisiones de implementación (T-API-20):**
+- Sin correcciones a los requerimientos; el escenario de la pendiente que cruza la medianoche llegó desde T-API-19 (`3fdf070`).
+- Dominio: `decidir` recibe `umbralCentavos`, que es `null` al confirmar (solo se revalidan saldo y límite, R-6.10); `codigoHmac` (`transferenciaId:codigo`, DD-33), `codigoCoincide` (`timingSafeEqual` sobre dos `Buffer` de 32 bytes, con rechazo previo si la longitud no es 32) y `codigoVencido` (`expira_en <= ahora`, comparando el texto ISO de DD-22, sin `Date`).
+- `respuestaDeTransferencia` devuelve el `202` original para toda fila con código (DD-32). `respuestaDeConfirmacion` responde según el estado actual (R-6.13). El código simulado solo existe en memoria: el caso de uso lo entrega al `ProveedorOtp` después del `COMMIT` y el controlador lo agrega únicamente a la primera respuesta (DD-25).
+- Confirmar sigue §6.5 en una sola `conTransaccion`: usuario → transferencia (`FOR UPDATE OF t`) → código (`FOR UPDATE` aparte, porque no se puede bloquear el lado nulo de un `LEFT JOIN`) → `ahora`. Con el código correcto: cuentas, otra lectura del instante (DD-36), saldo y límite. Un fallo es un resultado (`codigo-incorrecto` con `intentosRestantes`), que se confirma junto con su evento; al tercero, `CODIGO_AGOTADO`.
+- `GET /transferencias/{id}` lee sin bloqueo y, solo si la pendiente está vencida, abre una transacción que vuelve a comprobar con los bloqueos antes de rechazarla (dos consultas dejan un solo evento).
+- La fila leída lleva `destino.cuentaId` (interno, nunca en la respuesta) para bloquear las cuentas al confirmar.
+- Mutaciones: (f) el fallo lanzado como excepción, de modo que la transacción se revierte: roja; la respuesta HTTP fue idéntica, pero `intentos` quedó en 0. (g) `===` en lugar de `timingSafeEqual`: verde en unitarias e integración, como se esperaba (regresión: el código incorrecto se sigue rechazando; el tiempo constante no se observa por comportamiento).
+- A mitad de la tarea agregué a `.claude/settings.local.json` (no versionado) los permisos de `lint:verificar-reglas`, `lint:contrato` y `build:shared`.
+
+**Commits relacionados (T-API-20):** el de T-API-20.
 
 ---
 

@@ -8,12 +8,15 @@ import { rutasTransferencias } from './transferencias.rutas.js';
 
 /** DD-08: composición del módulo transferencias (casos de uso → controlador → rutas). */
 export function crearModuloTransferencias(dependencias: DependenciasApp): Router {
-  const { config, dataSource, logger, reloj } = dependencias;
+  const { config, dataSource, logger, reloj, proveedorOtp } = dependencias;
   const casos = crearCasosUsoTransferencias({
     conTransaccion: crearConTransaccion({ dataSource, logger }),
     reloj,
     logger,
+    proveedorOtp,
     limiteCentavos: config.LIMITE_DIARIO_CENTAVOS,
+    umbralCentavos: config.UMBRAL_CODIGO_CENTAVOS,
+    secretoOtp: config.OTP_HMAC_SECRETO,
   });
   return rutasTransferencias(crearControladorTransferencias(casos), crearAutenticar(config));
 }

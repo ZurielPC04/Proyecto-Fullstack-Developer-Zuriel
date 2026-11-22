@@ -14,7 +14,8 @@ export interface FilaTransferencia {
   concepto: string;
   referencia: string;
   origen: { cuentaId: string; nombre: string; clabe: string };
-  destino: { etiqueta: string; nombre: string; clabe: string };
+  /** `cuentaId` es interno: sirve para bloquear al confirmar y nunca sale en la respuesta. */
+  destino: { cuentaId: string; etiqueta: string; nombre: string; clabe: string };
   creadoEn: string;
   aplicadaEn: string | null;
   motivoRechazo: MotivoRechazo | null;
@@ -85,8 +86,30 @@ export function problemaDeRechazo(fila: FilaTransferencia): Problema {
  * primera respuesta y su repetición, así que son idénticas por construcción (R-4.14).
  */
 export function respuestaDeTransferencia(fila: FilaTransferencia): RespuestaTransferencia {
+  // DD-32: creada como pendiente (tiene código) → siempre el 202 original, sin codigoSimulado
+  // (DD-25), aunque después se haya aplicado, rechazado o vencido.
+  if (fila.codigo) {
+    return {
+      status: 202,
+      cuerpo: {
+        transferenciaId: fila.id,
+        estado: 'PENDIENTE_CONFIRMACION',
+        montoCentavos: fila.montoCentavos,
+        codigoExpiraEn: instanteIso(fila.codigo.expiraEn),
+      },
+    };
+  }
+  return respuestaDeConfirmacion(fila);
+}
+
+/**
+ * Respuesta según el estado actual: la de confirmar (R-6.10, R-6.13) y la de una transferencia
+ * sin código. Una pendiente no tiene respuesta aquí: confirmar siempre la resuelve.
+ */
+export function respuestaDeConfirmacion(fila: FilaTransferencia): RespuestaTransferencia {
   if (fila.estado === 'APLICADA') return { status: 201, cuerpo: comprobanteDe(fila) };
-  return { status: 422, cuerpo: problemaDeRechazo(fila) };
+  if (fila.estado === 'RECHAZADA') return { status: 422, cuerpo: problemaDeRechazo(fila) };
+  throw new Error('Una transferencia pendiente no tiene respuesta de confirmación');
 }
 
 /** Contrato `Transferencia` (R-4.10): el estado real, con el mismo origen y destino. */

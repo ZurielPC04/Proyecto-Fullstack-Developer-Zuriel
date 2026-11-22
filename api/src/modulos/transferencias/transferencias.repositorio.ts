@@ -134,6 +134,74 @@ export async function insertarTransferencia(
  * D-01 y DD-17: los dos asientos de una transferencia aplicada, con `creado_en = aplicada_en`.
  * El trigger mueve los saldos de las cuentas ya bloqueadas.
  */
+/**
+ * §6.5: el código de una pendiente, solo como HMAC (R-6.16), con `expira_en = ahora + 5 min`
+ * (D-07). `ahora` es el instante de la transacción de creación (DD-36).
+ */
+export async function insertarCodigo(
+  tx: EntityManager,
+  transferenciaId: string,
+  codigoHmac: string,
+  ahora: string,
+): Promise<void> {
+  await tx.query(
+    `INSERT INTO codigo_confirmacion (transferencia_id, codigo_hmac, expira_en)
+     VALUES ($1, $2, $3::timestamptz + interval '5 minutes')`,
+    [transferenciaId, codigoHmac, ahora],
+  );
+}
+
+export interface CodigoBloqueado {
+  codigoHmac: string;
+  intentos: number;
+  expiraEn: string;
+}
+
+/** D-12, segundo nivel: el código de la transferencia ya bloqueada (§6.5 paso 2). */
+export async function bloquearCodigo(
+  tx: EntityManager,
+  transferenciaId: string,
+): Promise<CodigoBloqueado | undefined> {
+  const filas = (await tx.query(
+    `SELECT codigo_hmac, intentos, expira_en FROM codigo_confirmacion
+      WHERE transferencia_id = $1 FOR UPDATE`,
+    [transferenciaId],
+  )) as { codigo_hmac: string; intentos: number; expira_en: string }[];
+  const f = filas[0];
+  return f ? { codigoHmac: f.codigo_hmac, intentos: f.intentos, expiraEn: f.expira_en } : undefined;
+}
+
+/** R-6.11: un intento fallido más; `codigo_protegido` solo admite `intentos + 1`. */
+export async function sumarIntento(tx: EntityManager, transferenciaId: string): Promise<number> {
+  const filas = (await tx.query(
+    `UPDATE codigo_confirmacion SET intentos = intentos + 1
+      WHERE transferencia_id = $1 RETURNING intentos`,
+    [transferenciaId],
+  )) as [{ intentos: number }[], number];
+  const intentos = filas[0][0]?.intentos;
+  if (intentos === undefined) throw new Error('El código de la transferencia no existe');
+  return intentos;
+}
+
+/**
+ * §3.4: una pendiente pasa a aplicada (con `aplicada_en = ahora`) o a rechazada con su motivo.
+ * `transferencia_transicion` solo admite salir de `PENDIENTE_CONFIRMACION`.
+ */
+export async function resolverPendiente(
+  tx: EntityManager,
+  transferenciaId: string,
+  cambio: { estado: 'APLICADA' } | { estado: 'RECHAZADA'; motivo: MotivoRechazo },
+  ahora: string,
+): Promise<void> {
+  await tx.query(
+    `UPDATE transferencia
+        SET estado = $2, motivo_rechazo = $3,
+            aplicada_en = CASE WHEN $2 = 'APLICADA' THEN $4::timestamptz END
+      WHERE id = $1`,
+    [transferenciaId, cambio.estado, cambio.estado === 'RECHAZADA' ? cambio.motivo : null, ahora],
+  );
+}
+
 export async function insertarAsientos(
   tx: EntityManager,
   a: {
@@ -171,6 +239,7 @@ interface FilaLeida {
   concepto: string;
   referencia: string;
   cuenta_origen_id: string;
+  cuenta_destino_id: string;
   origen_nombre: string;
   origen_clabe: string;
   destino_etiqueta: string;
@@ -196,7 +265,7 @@ async function leer(
   bloquear: boolean,
 ): Promise<(FilaTransferencia & { hash: string }) | undefined> {
   const filas = (await tx.query(
-    `SELECT t.id, t.estado, t.tipo, t.monto_centavos, t.concepto, t.referencia, t.cuenta_origen_id,
+    `SELECT t.id, t.estado, t.tipo, t.monto_centavos, t.concepto, t.referencia, t.cuenta_origen_id, t.cuenta_destino_id,
             co.nombre AS origen_nombre, co.clabe AS origen_clabe,
             coalesce(b.alias, cd.nombre) AS destino_etiqueta,
             coalesce(b.nombre, cd.nombre) AS destino_nombre, cd.clabe AS destino_clabe,
@@ -221,7 +290,12 @@ async function leer(
     concepto: f.concepto,
     referencia: f.referencia,
     origen: { cuentaId: f.cuenta_origen_id, nombre: f.origen_nombre, clabe: f.origen_clabe },
-    destino: { etiqueta: f.destino_etiqueta, nombre: f.destino_nombre, clabe: f.destino_clabe },
+    destino: {
+      cuentaId: f.cuenta_destino_id,
+      etiqueta: f.destino_etiqueta,
+      nombre: f.destino_nombre,
+      clabe: f.destino_clabe,
+    },
     creadoEn: f.creado_en,
     aplicadaEn: f.aplicada_en,
     motivoRechazo: f.motivo_rechazo,

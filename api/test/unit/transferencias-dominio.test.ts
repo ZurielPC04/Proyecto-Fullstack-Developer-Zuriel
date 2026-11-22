@@ -1,10 +1,42 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   clasificar,
+  codigoCoincide,
+  codigoHmac,
+  codigoVencido,
   decidir,
   hashPeticion,
 } from '../../src/modulos/transferencias/transferencias.dominio.js';
+
+describe('transferencias.dominio · código (§6.5)', () => {
+  const ID = '0b6f1f8e-4f0c-4b8e-9a51-7d0e0f6a2c11';
+  const SECRETO = 's'.repeat(32);
+
+  it('DD-33 R-6.16 el HMAC es SHA-256 hexadecimal de "transferenciaId:codigo" con el secreto', () => {
+    const esperado = createHmac('sha256', SECRETO).update(`${ID}:004217`).digest('hex');
+    expect(codigoHmac(SECRETO, ID, '004217')).toBe(esperado);
+  });
+
+  it('DD-33 el mismo código en otra transferencia da otro HMAC', () => {
+    const otro = '9b6f1f8e-4f0c-4b8e-9a51-7d0e0f6a2c11';
+    expect(codigoHmac(SECRETO, ID, '004217')).not.toBe(codigoHmac(SECRETO, otro, '004217'));
+  });
+
+  it('R-6.16 codigoCoincide acepta el HMAC igual y rechaza uno distinto o de otra longitud', () => {
+    const guardado = codigoHmac(SECRETO, ID, '004217');
+    expect(codigoCoincide(guardado, codigoHmac(SECRETO, ID, '004217'))).toBe(true);
+    expect(codigoCoincide(guardado, codigoHmac(SECRETO, ID, '004218'))).toBe(false);
+    expect(codigoCoincide(guardado, 'abcd')).toBe(false);
+  });
+
+  it('R-6.12 el código vence cuando expira_en <= ahora', () => {
+    const expira = '2026-12-01 18:05:00+00';
+    expect(codigoVencido(expira, '2026-12-01 18:04:59.999999+00')).toBe(false);
+    expect(codigoVencido(expira, '2026-12-01 18:05:00+00')).toBe(true);
+    expect(codigoVencido(expira, '2026-12-01 18:05:00.000001+00')).toBe(true);
+  });
+});
 
 const USUARIO = '11111111-1111-4111-8111-111111111111';
 const OTRO = '22222222-2222-4222-8222-222222222222';
@@ -26,7 +58,53 @@ describe('transferencias.dominio · decidir', () => {
     saldoOrigenCentavos: 100,
     consumidoCentavos: 0,
     limiteCentavos: 5_000_000,
+    umbralCentavos: 1_000_000 as number | null,
   };
+
+  it('R-6.8 a tercero exactamente en el umbral no pide código', () => {
+    expect(decidir({ ...base, montoCentavos: 1_000_000, saldoOrigenCentavos: 2_000_000 })).toEqual({
+      estado: 'APLICADA',
+    });
+  });
+
+  it('R-6.8 a tercero un centavo sobre el umbral queda pendiente de código', () => {
+    expect(decidir({ ...base, montoCentavos: 1_000_001, saldoOrigenCentavos: 2_000_000 })).toEqual({
+      estado: 'PENDIENTE_CONFIRMACION',
+    });
+  });
+
+  it('R-6.9 un traspaso sobre el umbral no pide código', () => {
+    expect(
+      decidir({
+        ...base,
+        tipo: 'TRASPASO',
+        montoCentavos: 3_000_000,
+        saldoOrigenCentavos: 3_000_000,
+      }),
+    ).toEqual({ estado: 'APLICADA' });
+  });
+
+  it('DD-31 sobre el umbral pero sin límite: se rechaza por límite y no se pide código', () => {
+    expect(
+      decidir({
+        ...base,
+        montoCentavos: 1_500_000,
+        saldoOrigenCentavos: 9_000_000,
+        consumidoCentavos: 4_000_000,
+      }),
+    ).toEqual({ estado: 'RECHAZADA', motivo: 'LIMITE_DIARIO_EXCEDIDO' });
+  });
+
+  it('R-6.10 al confirmar (umbral nulo) se aplica aunque supere el umbral', () => {
+    expect(
+      decidir({
+        ...base,
+        montoCentavos: 1_500_000,
+        saldoOrigenCentavos: 2_000_000,
+        umbralCentavos: null,
+      }),
+    ).toEqual({ estado: 'APLICADA' });
+  });
 
   it('R-6.1 consumido + monto igual al límite se aplica', () => {
     expect(

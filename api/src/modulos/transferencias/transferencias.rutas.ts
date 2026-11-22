@@ -1,4 +1,9 @@
-import { esquemaIdempotencyKey, esquemaTransferencia, uuid } from '@billetera/shared';
+import {
+  esquemaConfirmacion,
+  esquemaIdempotencyKey,
+  esquemaTransferencia,
+  uuid,
+} from '@billetera/shared';
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { validar } from '../../plataforma/http/validar.js';
@@ -11,6 +16,11 @@ export const esquemasCrearTransferencia = {
 };
 export const esquemasObtenerTransferencia = {
   params: z.object({ transferenciaId: uuid() }),
+};
+/** §6.7: el código son 6 dígitos; otro formato es un 400 y no consume intentos. */
+export const esquemasConfirmarTransferencia = {
+  params: z.object({ transferenciaId: uuid() }),
+  body: esquemaConfirmacion,
 };
 
 /** Middlewares 9 y 10 de §2.2, con `autenticar` en cada ruta (no `router.use`). */
@@ -27,6 +37,12 @@ export function rutasTransferencias(
     autenticar,
     validar(esquemasObtenerTransferencia),
     (req, res) => controlador.obtener(req, res),
+  );
+  router.post(
+    '/transferencias/:transferenciaId/confirmar',
+    autenticar,
+    validar(esquemasConfirmarTransferencia),
+    (req, res) => controlador.confirmar(req, res),
   );
   return router;
 }

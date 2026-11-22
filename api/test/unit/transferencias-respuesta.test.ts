@@ -16,7 +16,12 @@ const aplicada: FilaTransferencia = {
     nombre: 'Principal',
     clabe: '999180000000001234',
   },
-  destino: { etiqueta: 'Casero', nombre: 'Juan Pérez', clabe: '999180000000005678' },
+  destino: {
+    cuentaId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    etiqueta: 'Casero',
+    nombre: 'Juan Pérez',
+    clabe: '999180000000005678',
+  },
   creadoEn: '2026-11-14 16:05:09.12345+00',
   aplicadaEn: '2026-11-14 16:05:09.12345+00',
   motivoRechazo: null,
@@ -44,6 +49,30 @@ describe('respuestaDeTransferencia (§6.2)', () => {
         aplicadaEn: '2026-11-14T16:05:09.123450Z',
       },
     });
+  });
+
+  it('R-6.8 DD-32 DD-25 creada como pendiente → 202 sin codigoSimulado, aunque ya se haya aplicado', () => {
+    const pendiente: FilaTransferencia = {
+      ...aplicada,
+      codigo: { expiraEn: '2026-11-14 16:10:09.12345+00', intentos: 0 },
+    };
+    const esperado = {
+      status: 202,
+      cuerpo: {
+        transferenciaId: '0b6f1f8e-4f0c-4b8e-9a51-7d0e0f6a2c11',
+        estado: 'PENDIENTE_CONFIRMACION',
+        montoCentavos: 12345,
+        codigoExpiraEn: '2026-11-14T16:10:09.123450Z',
+      },
+    };
+    expect(
+      respuestaDeTransferencia({
+        ...pendiente,
+        estado: 'PENDIENTE_CONFIRMACION',
+        aplicadaEn: null,
+      }),
+    ).toEqual(esperado);
+    expect(respuestaDeTransferencia(pendiente)).toEqual(esperado);
   });
 
   it('R-4.3 DD-23 rechazada sin código → 422 con type del motivo, motivo y transferenciaId', () => {
