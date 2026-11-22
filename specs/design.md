@@ -1401,7 +1401,7 @@ El intento que la web guarda en `sessionStorage` (D-16) y la app móvil en `expo
 
 | Fase | Contenido guardado | Qué se reintenta si se pierde la red o se reanuda | Por qué es seguro |
 |---|---|---|---|
-| `creacion` | Llave, cuerpo congelado, id del usuario (móvil) | `POST /transferencias` con la **misma llave** y el mismo cuerpo | Idempotencia por llave (D-03) |
+| `creacion` | Llave, cuerpo congelado, id del usuario | `POST /transferencias` con la **misma llave** y el mismo cuerpo | Idempotencia por llave (D-03) |
 | `confirmacion` | Lo anterior, más `transferenciaId`, `codigoExpiraEn`, `codigoSimulado` si vino (DD-25) y, mientras la petición está en vuelo, el código capturado | `POST /transferencias/{id}/confirmar` con el mismo código; si no había código en vuelo, `GET /transferencias/{id}`. **Nunca** la creación | Confirmar es idempotente por el id de la transferencia (D-07, R-6.13) |
 
 - El intento pasa de `creacion` a `confirmacion` en cuanto llega el `202` (de la primera respuesta o de una repetición), y se guarda **antes** de mostrar la captura del código.
@@ -2573,7 +2573,8 @@ stateDiagram-v2
     Rechazado --> [*]: Borra el intento
 ```
 
-- **Reanudación.** Si al cargar `/transferir` hay un intento en `sessionStorage`, la máquina arranca en un estado `VerificandoAnterior`, que muestra "Verificando operación anterior…" (R-4.25). Según la fase guardada:
+- **El intento pertenece a su usuario** (R-1.12). Se guarda con `usuarioId`, el `sub` del access con el que se creó (§5.2). La web lee el `sub` del payload sin verificar la firma: no es una decisión de seguridad del servidor, que vuelve a autenticar cada petición, sino de qué mostrar en esta pestaña. Al cargar `/transferir`, un intento cuyo `usuarioId` no coincide con el `sub` del access actual (o que no lo trae, o si no hay `sub` legible) se borra sin enviarlo ni mostrarlo, y la máquina arranca en `Editando`. Así, si la sesión expira sin cerrarse y otro usuario inicia sesión en la misma pestaña, no ve ni reanuda el intento del anterior. El borrado al cerrar sesión sigue igual.
+- **Reanudación.** Si al cargar `/transferir` hay un intento del usuario actual en `sessionStorage`, la máquina arranca en un estado `VerificandoAnterior`, que muestra "Verificando operación anterior…" (R-4.25). Según la fase guardada:
   - `creacion`: pasa a `Enviando` y reenvía la creación con la misma llave.
   - `confirmacion` con un código en vuelo: pasa a `ConfirmandoCodigo` y reenvía la confirmación con ese código.
   - `confirmacion` sin código en vuelo (la recarga ocurrió en la pantalla del código): pasa a `VerificandoEstado` y consulta `GET /transferencias/{id}`. Si sigue pendiente, la captura muestra el `codigoSimulado` guardado (DD-25).
