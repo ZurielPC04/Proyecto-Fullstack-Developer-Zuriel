@@ -1137,7 +1137,7 @@ Toda ruta 🔒 puede responder además `401`, y cualquiera `500`.
 > **Opciones:** (1) guardar el código cifrado solo en modo simulado; (2) mandarlo en un header en lugar del cuerpo; (3) omitirlo en la repetición.
 > **Decisión:** la opción 3. La repetición de un `202` es idéntica a la primera respuesta salvo por `codigoSimulado`, que solo aparece la primera vez. Es la única excepción a R-4.14, y solo existe con `OTP_SIMULADO=true`, que nunca está activo en producción (RNF-15). La prueba de idempotencia compara los cuerpos sin ese campo y verifica aparte que la repetición no lo trae.
 > **Motivo:** la opción 1 crea justo el dato que R-6.16 prohíbe, aunque sea en desarrollo. La opción 2 contradice R-6.17, que pide el campo en la respuesta. En producción el código llega por otro canal (SMS o correo), así que la repetición se comporta igual que un proveedor real: el usuario ya recibió el código.
-> **Recuperar el código simulado en los clientes.** Si el usuario recarga la web o reabre la app en la pantalla del código, el reenvío con la misma llave (R-4.25, R-4.31) devuelve el `202` sin `codigoSimulado`, y en modo simulado no habría otro canal para recibirlo. Para eso:
+> **Recuperar el código simulado en los clientes.** Si el usuario recarga la web o reabre la app en la pantalla del código, ninguna respuesta vuelve a traer `codigoSimulado`: ni el reenvío con la misma llave de un intento que seguía en fase `creacion` (R-4.25, R-4.31), que devuelve el `202` sin el campo, ni el `GET /transferencias/{id}` con el que se reanuda la fase `confirmacion` sin código en vuelo (§13.2, "Reanudación"). En modo simulado no habría otro canal para recibirlo. Para eso:
 > - Si la primera respuesta `202` trae `codigoSimulado`, el cliente lo guarda **junto con el intento**: la web en `sessionStorage` (D-16) y la app móvil en `expo-secure-store` (D-17). Al reanudar, lo toma de ahí y no de la respuesta.
 > - Se borra con el intento: cuando la transferencia se resuelve (`201` o `422`) y al cerrar sesión (R-1.12).
 > - **En producción el campo no existe**, porque la API no arranca con `OTP_SIMULADO=true` (RNF-15). Los clientes solo guardan lo que trae la respuesta, así que no guardan nada; no hay una rama de código que dependa del entorno.
@@ -1402,7 +1402,7 @@ El intento que la web guarda en `sessionStorage` (D-16) y la app móvil en `expo
 | Fase | Contenido guardado | Qué se reintenta si se pierde la red o se reanuda | Por qué es seguro |
 |---|---|---|---|
 | `creacion` | Llave, cuerpo congelado, id del usuario (móvil) | `POST /transferencias` con la **misma llave** y el mismo cuerpo | Idempotencia por llave (D-03) |
-| `confirmacion` | Lo anterior, más `transferenciaId`, `codigoExpiraEn`, `codigoSimulado` si vino (DD-25) y, mientras la petición está en vuelo, el código capturado | `POST /transferencias/{id}/confirmar` con el mismo código, **nunca** la creación | Confirmar es idempotente por el id de la transferencia (D-07, R-6.13) |
+| `confirmacion` | Lo anterior, más `transferenciaId`, `codigoExpiraEn`, `codigoSimulado` si vino (DD-25) y, mientras la petición está en vuelo, el código capturado | `POST /transferencias/{id}/confirmar` con el mismo código; si no había código en vuelo, `GET /transferencias/{id}`. **Nunca** la creación | Confirmar es idempotente por el id de la transferencia (D-07, R-6.13) |
 
 - El intento pasa de `creacion` a `confirmacion` en cuanto llega el `202` (de la primera respuesta o de una repetición), y se guarda **antes** de mostrar la captura del código.
 - El código capturado se guarda solo mientras la confirmación está en vuelo, y se borra al recibir respuesta. El intento completo se borra al resolverse (`201` o `422`) y al cerrar sesión (R-1.12).
@@ -2549,25 +2549,39 @@ stateDiagram-v2
     Confirmando --> Editando: Editar, descarta la llave
     Confirmando --> Enviando: Enviar, guarda intento en fase creacion
     Enviando --> Comprobante: 201
-    Enviando --> Rechazado: 422
+    Enviando --> Rechazado: 422 u otro 4xx salvo 401
     Enviando --> CapturandoCodigo: 202 de la primera respuesta
     Enviando --> VerificandoEstado: 202 de un reintento o reanudación
-    Enviando --> ErrorReintentable: Red, timeout de 15 s o 503
+    Enviando --> ErrorReintentable: Red, timeout de 15 s, 5xx o 401
     ErrorReintentable --> Enviando: Reintentar con la misma llave
+    [*] --> VerificandoAnterior: Hay un intento guardado
+    VerificandoAnterior --> Enviando: Fase creacion
+    VerificandoAnterior --> ConfirmandoCodigo: Fase confirmacion con código en vuelo
+    VerificandoAnterior --> VerificandoEstado: Fase confirmacion sin código en vuelo
     VerificandoEstado --> Comprobante: GET da APLICADA
-    VerificandoEstado --> Rechazado: GET da RECHAZADA
+    VerificandoEstado --> Rechazado: GET da RECHAZADA, o 4xx salvo 401
     VerificandoEstado --> CapturandoCodigo: GET da PENDIENTE_CONFIRMACION
+    VerificandoEstado --> ErrorVerificacion: Red, timeout, 5xx o 401
+    ErrorVerificacion --> VerificandoEstado: Reintentar el GET
     CapturandoCodigo --> ConfirmandoCodigo: Confirmar, fase confirmacion con el código
     ConfirmandoCodigo --> Comprobante: 201
     ConfirmandoCodigo --> CapturandoCodigo: 422 codigo-incorrecto
-    ConfirmandoCodigo --> Rechazado: 422 de rechazo
-    ConfirmandoCodigo --> ErrorConfirmacion: Red, timeout o 503
+    ConfirmandoCodigo --> Rechazado: 422 de rechazo u otro 4xx salvo 401
+    ConfirmandoCodigo --> ErrorConfirmacion: Red, timeout, 5xx o 401
     ErrorConfirmacion --> ConfirmandoCodigo: Reintentar la confirmación
     Comprobante --> [*]: Borra el intento
     Rechazado --> [*]: Borra el intento
 ```
 
-- **Reanudación.** Si al cargar `/transferir` hay un intento en `sessionStorage`, la máquina arranca en un estado `VerificandoAnterior`, que muestra "Verificando operación anterior…" (R-4.25). Según la fase guardada, pasa a `Enviando` (reenvía la creación con la misma llave) o a `ConfirmandoCodigo` (reenvía la confirmación). No se puede iniciar otro intento hasta resolverlo.
+- **Reanudación.** Si al cargar `/transferir` hay un intento en `sessionStorage`, la máquina arranca en un estado `VerificandoAnterior`, que muestra "Verificando operación anterior…" (R-4.25). Según la fase guardada:
+  - `creacion`: pasa a `Enviando` y reenvía la creación con la misma llave.
+  - `confirmacion` con un código en vuelo: pasa a `ConfirmandoCodigo` y reenvía la confirmación con ese código.
+  - `confirmacion` sin código en vuelo (la recarga ocurrió en la pantalla del código): pasa a `VerificandoEstado` y consulta `GET /transferencias/{id}`. Si sigue pendiente, la captura muestra el `codigoSimulado` guardado (DD-25).
+  - En fase `confirmacion` **nunca** se reenvía la creación (§6.2).
+
+  No se puede iniciar otro intento hasta resolverlo.
+- **Respuestas fuera del caso feliz** (corrección de T-WEB-06). Un resultado incierto nunca cierra el intento: la red, el timeout, **cualquier** `5xx` (no solo el `503`) y un `401` que el refresh no resolvió llevan a `ErrorReintentable`, `ErrorConfirmacion` o `ErrorVerificacion`, que conservan la llave y el intento. Los demás `4xx` (`422` de cualquier tipo, `404`, `400`) cierran el intento en `Rechazado`: la API no guardó nada o guardó un rechazo (§6.2), así que un envío nuevo con una llave nueva no puede duplicar dinero.
+- **`ErrorVerificacion`.** Si el `GET` de `VerificandoEstado` falla por red, timeout, `5xx` o `401`, se ofrece "Reintentar", que repite el `GET`. Es una lectura, así que repetirla es seguro.
 - **Doble clic y doble Enter** (R-4.21). "Enviar" y "Confirmar" son el botón `submit` de un `<form>`, así que el clic y el Enter pasan por el mismo `onSubmit`. Ese manejador revisa una bandera en `useRef` **antes** de cualquier `setState` y descarta el segundo disparo del mismo ciclo. El botón queda `disabled` con `aria-busy="true"` mientras la petición está en vuelo.
 - **Timeout:** `AbortController` de 15 s por petición, igual que en móvil (D-17).
 - **Rechazo** (R-4.12): muestra `mensajeDeProblema(type)` y un botón "Nueva transferencia", que vuelve a `Editando` con una llave nueva (R-4.23, R-6.15). Nunca muestra comprobante.
