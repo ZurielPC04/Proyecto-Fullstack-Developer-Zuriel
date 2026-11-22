@@ -1,4 +1,11 @@
-import type { Beneficiario, Comprobante, Cuenta, Limites } from '@billetera/shared';
+import type {
+  Beneficiario,
+  Comprobante,
+  Cuenta,
+  Limites,
+  PendienteConfirmacion,
+  Transferencia,
+} from '@billetera/shared';
 import { http, HttpResponse } from 'msw';
 import { INSTANTE, servidor, tokens } from './servidor';
 
@@ -103,4 +110,70 @@ export function puerta() {
     abrir = resolver;
   });
   return { abierta, abrir };
+}
+
+const EXPIRA = '2026-11-22T18:05:00.000000Z';
+
+/** R-6.8: primera respuesta `202` de una transferencia a tercero de $15,000.00. */
+export const PENDIENTE: PendienteConfirmacion = {
+  transferenciaId: ID_TRANSFERENCIA,
+  estado: 'PENDIENTE_CONFIRMACION',
+  montoCentavos: 1500000,
+  codigoExpiraEn: EXPIRA,
+  codigoSimulado: '123456',
+};
+
+/** DD-25: la repetición del `202` con la misma llave no trae `codigoSimulado`. */
+export const PENDIENTE_REPETIDA: PendienteConfirmacion = {
+  transferenciaId: ID_TRANSFERENCIA,
+  estado: 'PENDIENTE_CONFIRMACION',
+  montoCentavos: 1500000,
+  codigoExpiraEn: EXPIRA,
+};
+
+/** `GET /transferencias/{id}` de la transferencia pendiente, en el estado dado (§6.2). */
+export function transferenciaEnEstado(
+  estado: Transferencia['estado'],
+  motivoRechazo: Transferencia['motivoRechazo'] = null,
+): Transferencia {
+  return {
+    id: ID_TRANSFERENCIA,
+    estado,
+    tipo: 'TERCERO',
+    montoCentavos: 1500000,
+    concepto: 'Renta',
+    referencia: '0042',
+    origen: COMPROBANTE.origen,
+    destino: COMPROBANTE.destino,
+    creadaEn: INSTANTE,
+    aplicadaEn: estado === 'APLICADA' ? INSTANTE : null,
+    motivoRechazo,
+    codigoExpiraEn: estado === 'PENDIENTE_CONFIRMACION' ? EXPIRA : null,
+  };
+}
+
+/** `POST /transferencias/{id}/confirmar`: registra cada código enviado. */
+export function confirmacionesResponden(
+  responder: (n: number) => Response | Promise<Response>,
+): string[] {
+  const codigos: string[] = [];
+  servidor.use(
+    http.post('/api/transferencias/:id/confirmar', async ({ request }) => {
+      codigos.push(((await request.json()) as { codigo: string }).codigo);
+      return responder(codigos.length);
+    }),
+  );
+  return codigos;
+}
+
+/** `GET /transferencias/{id}`: cuenta las consultas del estado real. */
+export function estadoResponde(responder: (n: number) => Response | Promise<Response>) {
+  const consultas = { n: 0 };
+  servidor.use(
+    http.get('/api/transferencias/:id', () => {
+      consultas.n++;
+      return responder(consultas.n);
+    }),
+  );
+  return consultas;
 }

@@ -904,6 +904,21 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-WEB-06):** `cb44c88` (H1 a H3) y el de T-WEB-06.
 
+**Decisiones de implementación (T-WEB-07):**
+- Sin correcciones nuevas a los requerimientos: H2 y H3 (arriba) cubrieron los huecos de esta tarea.
+- `almacen-intento.ts` guarda el intento con su fase: `creacion` (llave, datos congelados y valores capturados) o `confirmacion` (además `transferenciaId`, `codigoExpiraEn`, `codigoSimulado` si vino y `codigoEnVuelo`). Al leerlo lo valida con Zod, con `esquemaTransferencia` para el cuerpo; un intento irreconocible se descarta. Nunca lleva tokens (R-4.25).
+- El intento en fase `creacion` se guarda antes del `POST`, y la fase `confirmacion` se guarda en cuanto llega el `202`, antes de mostrar la captura (§6.2). Se borra al terminar (`201` o `4xx`) y al cerrar sesión (R-1.12, ya en T-WEB-02).
+- El código capturado se guarda mientras su confirmación no tiene una respuesta definitiva: se borra con el `201`, el `422` o el `404`, y se conserva ante red, timeout, `5xx` o `401` (H1), para que una recarga reintente esa misma confirmación.
+- La máquina arranca en `VerificandoAnterior` si hay intento, y reanuda con `useEffectEvent`. La bandera de `useRef` es la misma para crear, confirmar y consultar, así que el doble efecto de `StrictMode` en desarrollo tampoco duplica la petición.
+- Un `202` de reintento o reanudación pasa por `GET /transferencias/{id}` (DD-32). El comprobante se arma con la respuesta del `GET`, y el rechazo muestra `mensajeDeProblema` del motivo en kebab-case.
+- La captura del código (`PantallaCodigo`) cubre `CapturandoCodigo`, `ConfirmandoCodigo` y `ErrorConfirmacion` con un solo formulario, validado con `esquemaConfirmacion` de `shared`. Muestra el `codigoSimulado` como "Modo de prueba" (DD-25). Ante un `codigo-incorrecto`, el campo queda con `aria-invalid`, el mensaje dice los intentos restantes y el foco vuelve al campo; los intentos se anuncian además en un `role="status"`.
+- Las pruebas simulan la recarga desmontando la app y montándola otra vez, con el access borrado y `sessionStorage` intacto. La petición que estaba en vuelo se queda sin respuesta, como en el navegador. Así no dependen del formato del JSON guardado.
+- Mutaciones, cada una revertida con `sha256sum` idéntico al original:
+  - al recargar en fase `confirmacion`, reenviar la creación → roja la prueba de la confirmación en vuelo: llega el `202` repetido, se consulta el estado y nunca se confirma, que es la segunda creación que DD-32 evita;
+  - no guardar el `codigoSimulado` en el intento → roja la de la recarga en la pantalla del código (no aparece "Modo de prueba").
+
+**Commits relacionados (T-WEB-07):** el de T-WEB-07.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
