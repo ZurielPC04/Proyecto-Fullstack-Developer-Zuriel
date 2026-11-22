@@ -92,7 +92,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 - [x] T-API-14 · `api` · P1 · Rate limit
 - [x] T-API-15 · `api` · P1 · Consulta de cuentas
 - [x] T-API-16 · `api` · P1 · Beneficiarios
-- [ ] T-API-17 · `api` · P1 · Transferencia sin código
+- [x] T-API-17 · `api` · P1 · Transferencia sin código
 - [ ] T-API-18 · `api` · P1 · Idempotencia
 - [ ] T-API-19 · `api` · P1 · Límite diario y medianoche
 - [ ] T-API-20 · `api` · P1 · Código de un solo uso

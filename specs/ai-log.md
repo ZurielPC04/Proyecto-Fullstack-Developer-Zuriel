@@ -611,6 +611,35 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (corrección):** el de `fix(api)` del hash ficticio.
 
+### Sesión 21 — 2026-11-21 · Implementación de T-API-17 a T-API-21 (transferencias, idempotencia, límite, código y concurrencia)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó §2.1, §2.3, §6.1 a §6.7, §7.2, §7.3, §10.2, §14.3, D-03, D-04, D-07, D-12, D-13, D-15, DD-14, DD-17, DD-25, DD-31 a DD-36 y el contrato de transferencias y límites, y propuso un solo plan para las cinco tareas, con sus seams, dos huecos (H1 y H2) y tres correcciones a las mutaciones que yo había pedido. Lo aprobé una vez, completo.
+
+**Correcciones al prompt (plan):**
+
+| Qué pedía | Problema | Decisión |
+|---|---|---|
+| Mi prompt: quitar el `FOR UPDATE` de las cuentas debía poner en rojo la prueba de 100 simultáneas (T-API-21) | Las 100 son del mismo usuario; el bloqueo del usuario (D-04) ya las serializa y el `CHECK` de saldo es la última red, así que esa mutación no la detecta esa prueba | La detectan la prueba de DD-36 (T-API-17) y la de cruzadas A↔B (T-API-21). Para la de 100 se aplica además la mutación "sin bloqueo de usuario ni de cuentas" |
+| Mi prompt: invertir el orden del bloqueo de cuentas | Con `ORDER BY id DESC` en la única función de bloqueo, todos los flujos siguen un mismo orden total y no hay deadlock: es un mutante equivalente | Se aplica e informa; como error real se aplica "origen y después destino", que las cruzadas deben detectar |
+| Mi prompt: comparar el código sin `timingSafeEqual` | El tiempo constante no se observa por comportamiento | Se confirma como regresión: el código incorrecto se sigue rechazando |
+
+**Correcciones a los requerimientos (antes de T-API-17):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| `openapi.yaml`, `422` de `POST /transferencias`: `oneOf [ProblemaRechazo, Problema]` | Todo `ProblemaRechazo` cumple también `Problema`, así que ninguna respuesta `saldo-insuficiente` podía cumplir el `oneOf` (Ajv la rechazaría) | `anyOf` (H1), con los tipos de `shared` regenerados. En confirmar, el `oneOf [ProblemaCodigoIncorrecto, ProblemaRechazo]` sí es disjunto y no cambia |
+
+**Decisiones de implementación (T-API-17):**
+- Capas: `transferencias.dominio.ts` (clasificar, decidir, hash de petición), `transferencias.respuesta.ts` (`respuestaDeTransferencia` y `aTransferencia`: puras, pero conocen los códigos HTTP, así que no van en el dominio), casos de uso que devuelven la fila y nunca un código HTTP, y controlador.
+- La resolución del destino (§6.1 paso 2) corre en su propia `conTransaccion`, antes de la de escritura; nunca se toma una conexión del pool mientras se tiene otra.
+- `bloquearCuentas` devuelve el saldo leído con el bloqueo; `fondear` la sigue usando.
+- El hash de la petición ya se guarda (la columna lo exige para toda transferencia de usuario); su comparación es de T-API-18.
+- La prueba de DD-36 retiene la cuenta destino con `FOR UPDATE` desde otra conexión, lanza la transferencia, lee `clock_timestamp()` justo antes de liberar y exige `aplicadaEn` mayor que esa hora, con los asientos en el mismo instante.
+- Mutaciones, las dos rojas en la prueba de DD-36: (a) sin `FOR UPDATE` en las cuentas; (b) leer el instante antes de bloquear las cuentas. Se aplicaron y revirtieron con la herramienta de edición, y el hash se verificó con `sha256sum` en un comando aparte.
+- **Abortos intermitentes de la integración en Windows:** varias corridas completas con `forks` terminaron con un worker en `0xC0000409` ("during started state"), cada vez en un archivo distinto (`data-source`, `entidades`, `sesion`, `registro`, `integridad`, `invariantes`), sin mensaje en stderr y sin informe de diagnóstico de Node. Con `HEAD` limpio pasó dos veces; con `--pool=threads` pasó dos veces; después, `forks` con el mismo código también pasó dos veces, incluida la corrida oficial. La bisección hecha mientras fallaba (router vacío o sin montar) resultó no concluyente: la causa no está en el código de la tarea. Hipótesis sin confirmar: el orden de los archivos (Vitest corre primero los que fallaron antes) o el entorno de Windows. No se cambió la configuración.
+
+**Commits relacionados (T-API-17):** `93685cb` (H1) y el de T-API-17.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

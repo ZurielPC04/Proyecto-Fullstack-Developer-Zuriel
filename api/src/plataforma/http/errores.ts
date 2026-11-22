@@ -49,6 +49,13 @@ export class ClabeNoEncontrada extends ErrorDominio {
   }
 }
 
+/** `422 misma-cuenta`: origen igual a destino, antes de crear la transferencia (R-4.4). */
+export class MismaCuenta extends ErrorDominio {
+  constructor(opciones?: ErrorOptions) {
+    super('misma-cuenta', {}, opciones);
+  }
+}
+
 /** `429 too-many-requests`: rate limit excedido; el limitador ya fijó `Retry-After` (§11). */
 export class DemasiadasPeticiones extends ErrorDominio {
   constructor(opciones?: ErrorOptions) {

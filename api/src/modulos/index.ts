@@ -3,6 +3,7 @@ import type { DependenciasApp } from '../app.js';
 import { crearModuloBeneficiarios } from './beneficiarios/index.js';
 import { crearModuloCuentas } from './cuentas/index.js';
 import { crearModuloIdentidad } from './identidad/index.js';
+import { crearModuloTransferencias } from './transferencias/index.js';
 
 /**
  * DD-08: la composición de los routers de negocio vive aquí, en un solo lugar.
@@ -15,5 +16,6 @@ export async function crearModulos(dependencias: DependenciasApp): Promise<Route
     await crearModuloIdentidad(dependencias),
     crearModuloCuentas(dependencias),
     crearModuloBeneficiarios(dependencias),
+    crearModuloTransferencias(dependencias),
   ];
 }
