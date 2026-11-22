@@ -1,37 +1,38 @@
-// Raíz de la app móvil (design.md §13.3, DD-03): React Navigation con native stack.
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+// Raíz de la app móvil: lee la configuración y cablea las dependencias reales
+// (expo-secure-store y fetch) para la sesión y el cliente de la API.
 import { StatusBar } from 'expo-status-bar';
+import * as SecureStore from 'expo-secure-store';
 import { StyleSheet, Text, View } from 'react-native';
+import { crearCliente } from './api/cliente';
+import { crearSesion } from './auth/sesion';
 import { leerConfig } from './config';
-import { PantallaSalud } from './pantallas/PantallaSalud';
-
-export type RutasRaiz = { Salud: undefined };
-
-const Stack = createNativeStackNavigator<RutasRaiz>();
+import type { ContextoApp } from './contexto';
+import { Raiz } from './Raiz';
 
 const config = leerConfig();
 
+function crearContexto(apiUrl: string): ContextoApp {
+  const sesion = crearSesion({ apiUrl, almacen: SecureStore });
+  return { apiUrl, sesion, cliente: crearCliente({ apiUrl, sesion }) };
+}
+
+const contexto = config.ok ? crearContexto(config.config.apiUrl) : null;
+
 export function App() {
-  if (!config.ok) {
+  if (!config.ok || contexto === null) {
     return (
       <View style={estilos.error}>
         <Text style={estilos.titulo}>Error de configuración</Text>
-        <Text accessibilityRole="alert">{config.error}</Text>
+        <Text accessibilityRole="alert">{config.ok ? '' : config.error}</Text>
         <StatusBar style="auto" />
       </View>
     );
   }
-  const { apiUrl } = config.config;
   return (
-    <NavigationContainer>
-      <Stack.Navigator>
-        <Stack.Screen name="Salud" options={{ title: 'Billetera' }}>
-          {() => <PantallaSalud apiUrl={apiUrl} />}
-        </Stack.Screen>
-      </Stack.Navigator>
+    <>
+      <Raiz contexto={contexto} />
       <StatusBar style="auto" />
-    </NavigationContainer>
+    </>
   );
 }
 

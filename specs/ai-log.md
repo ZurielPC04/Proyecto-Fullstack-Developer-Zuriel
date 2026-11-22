@@ -1020,6 +1020,28 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** `28bdb67` (`formatearMXNSinIntl` en `design.md` §13.1) y el de T-MOB-01.
 
+### Sesión 26 — 2026-11-22 · Implementación de T-MOB-02, T-CI-03 y T-MOB-03 (sesión, CI móvil, saldo y movimientos)
+
+**Herramienta:** Claude Code (Opus 5.5), con el plan del bloque móvil aprobado en la sesión 25. Un commit por tarea y sin push.
+
+**T-MOB-02 (sesión y login):**
+- `auth/sesion.ts` recibe inyectados el almacén (en la app, `expo-secure-store`) y `fetch`, así que las pantallas no tienen lógica de sesión. El access vive solo en memoria y el refresh en `billetera.refresh`.
+- Una sola promesa de refresh en vuelo. Si el access ya cambió respecto del que falló, no se vuelve a rotar.
+- Un `400` o `401` del refresh borra el refresh y pide login, pero conserva el intento (DD-45). Un error de red o un `5xx` no toca la sesión.
+- La raíz monta un solo stack según el estado (`restaurando`, `sin-sesion` o `con-sesion`). El login lleva un botón "Estado del servidor" con la pantalla de salud de T-MOB-01, para revisar la URL de la LAN antes de iniciar sesión.
+- No se agregaron dependencias.
+
+**Correcciones a la IA:**
+- En Testing Library de React Native 14, `fireEvent` devuelve una promesa. Sin `await`, tres pruebas de navegación fallaban porque el login no alcanzaba a cambiar de stack.
+- **Una mutación sobrevivió.** Con el access fijado antes de guardar el refresh, sin esperar la escritura, la prueba de DD-45 seguía en verde: el almacén simulado anotaba la escritura en cuanto se llamaba, de forma síncrona. Ahora la anota al terminar, después de un ciclo del event loop, como una escritura real de SecureStore. Con eso, la misma mutación pone en rojo la prueba de DD-45 y otras cuatro.
+
+**Mutaciones de T-MOB-02** (todas en rojo, revertidas con `sha256sum` idéntico):
+- Sin una sola promesa (`=` en lugar de `??=`): rojo en "tres peticiones con 401 simultáneas producen un solo refresh".
+- Access fijado antes de guardar el refresh: rojo en la prueba de DD-45.
+- Logout que no borra `billetera.intento`: rojo en las dos pruebas de logout.
+
+**Commits relacionados:** el de T-MOB-02.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
