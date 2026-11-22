@@ -27,6 +27,8 @@ export default defineConfig(
     '**/coverage/',
     'eslint-pruebas/',
     'packages/shared/src/api/openapi.ts',
+    'mobile/.expo/',
+    'mobile/expo-env.d.ts',
   ]),
   js.configs.recommended,
   tseslint.configs.recommended,
@@ -72,6 +74,12 @@ export default defineConfig(
               name: '@react-native-async-storage/async-storage',
               message:
                 'RNF-20/DD-42: tokens e intentos solo en expo-secure-store; nunca AsyncStorage.',
+            },
+            {
+              name: '@billetera/shared',
+              importNames: ['formatearMXN'],
+              message:
+                'D-18 punto 5: Hermes no acepta BigInt en formatToParts; en móvil usa formatearMXNSinIntl.',
             },
           ],
         },
@@ -130,6 +138,13 @@ export default defineConfig(
     files: ['web/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     languageOptions: { globals: globals.browser },
+    rules: reactHooks.configs.flat.recommended.rules,
+  },
+  // DD-03: la app móvil es React Native; reglas de hooks.
+  {
+    name: 'billetera/movil',
+    files: ['mobile/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.flat.recommended.rules,
   },
   {

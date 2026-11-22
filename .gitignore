@@ -7,6 +7,10 @@ dist/
 *.tsbuildinfo
 coverage/
 
+# Expo (estado local de expo start y tipos generados)
+.expo/
+expo-env.d.ts
+
 # Variables de entorno
 .env
 .env.*

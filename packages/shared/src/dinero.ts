@@ -23,6 +23,19 @@ export function formatearMXN(centavos: number): string {
   return signo + formateado;
 }
 
+// Inserta "," antes de cada grupo de 3 dígitos que llega al final del texto.
+const MILES = /\B(?=(\d{3})+$)/g;
+
+/**
+ * R-2.5 sin Intl, para Hermes (D-18 punto 5): en la app móvil, `formatToParts` con BigInt
+ * lanza "Cannot convert BigInt to number". Agrupa los miles sobre el texto, sin aritmética,
+ * y da el mismo resultado que `formatearMXN`.
+ */
+export function formatearMXNSinIntl(centavos: number): string {
+  const { signo, pesos, fraccion } = separar(centavos);
+  return `${signo}$${pesos.replace(MILES, ',')}.${fraccion}`;
+}
+
 /** R-B1.2: pesos con dos decimales para el CSV, sin Intl (DD-38). */
 export function centavosATextoDecimal(centavos: number): string {
   const { signo, pesos, fraccion } = separar(centavos);

@@ -116,7 +116,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 
 **Fase 6 · Móvil**
 
-- [ ] T-MOB-01 · `mobile` · P1 · Esqueleto Expo y conexión a la API local
+- [x] T-MOB-01 · `mobile` · P1 · Esqueleto Expo y conexión a la API local
 - [ ] T-MOB-02 · `mobile` · P1 · Sesión y login
 - [ ] T-CI-03 · `ci` · P1 · Job `movil` y jobs obligatorios
 - [ ] T-MOB-03 · `mobile` · P1 · Saldo y últimos 20 movimientos

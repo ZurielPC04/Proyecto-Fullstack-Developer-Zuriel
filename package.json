@@ -18,6 +18,8 @@
     "build": "npm run build --workspaces --if-present",
     "predev": "npm run build:shared",
     "dev": "concurrently --names api,web --prefix-colors blue,green \"npm run dev -w api\" \"npm run dev -w web\"",
+    "premobile": "npm run build:shared",
+    "mobile": "npm run start -w mobile",
     "lint": "eslint .",
     "lint:verificar-reglas": "node scripts/verificar-reglas-lint.mjs",
     "lint:contrato": "redocly lint specs/openapi.yaml",

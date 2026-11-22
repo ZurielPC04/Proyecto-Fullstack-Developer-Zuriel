@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   centavosATextoDecimal,
   formatearMXN,
+  formatearMXNSinIntl,
   montoTextoACentavos,
   TOPE_CENTAVOS,
 } from '../src/dinero.js';
@@ -16,16 +17,59 @@ describe('centavosATextoDecimal', () => {
   });
 });
 
+const CASOS_R_2_5: [number, string][] = [
+  [5, '$0.05'],
+  [100, '$1.00'],
+  [123456, '$1,234.56'],
+  [0, '$0.00'],
+  [-250, '-$2.50'],
+  [-5, '-$0.05'],
+];
+
 describe('formatearMXN', () => {
-  it.each([
-    [5, '$0.05'],
-    [100, '$1.00'],
-    [123456, '$1,234.56'],
-    [0, '$0.00'],
-    [-250, '-$2.50'],
-    [-5, '-$0.05'],
-  ])('R-2.5 %i centavos se muestran como "%s"', (centavos, texto) => {
+  it.each(CASOS_R_2_5)('R-2.5 %i centavos se muestran como "%s"', (centavos, texto) => {
     expect(formatearMXN(centavos)).toBe(texto);
+  });
+});
+
+describe('formatearMXNSinIntl (respaldo para Hermes, D-18 punto 5)', () => {
+  it.each(CASOS_R_2_5)('R-2.5 %i centavos se muestran como "%s"', (centavos, texto) => {
+    expect(formatearMXNSinIntl(centavos)).toBe(texto);
+  });
+
+  it.each([
+    -TOPE_CENTAVOS,
+    -100000000,
+    -123456,
+    -100000,
+    -99999,
+    -250,
+    -100,
+    -99,
+    -5,
+    -1,
+    0,
+    1,
+    5,
+    10,
+    99,
+    100,
+    999,
+    99999,
+    100000,
+    999999,
+    1000000,
+    12345678,
+    100000000,
+    123456789012,
+    TOPE_CENTAVOS - 1,
+    TOPE_CENTAVOS,
+  ])('R-2.5 da lo mismo que formatearMXN para %i centavos', (centavos) => {
+    expect(formatearMXNSinIntl(centavos)).toBe(formatearMXN(centavos));
+  });
+
+  it('R-2.5 el tope se muestra con todos sus grupos de miles', () => {
+    expect(formatearMXNSinIntl(TOPE_CENTAVOS)).toBe('$1,000,000,000.00');
   });
 });
 

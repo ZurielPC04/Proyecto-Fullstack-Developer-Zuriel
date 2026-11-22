@@ -959,6 +959,67 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados:** el `docs(specs)` del intento por usuario y el `fix(web)` de T-WEB-07.
 
+### Sesión 25 — 2026-11-22 · Implementación de T-MOB-01 (esqueleto Expo)
+
+**Herramienta:** Claude Code (Opus 5.5), flujo plan-first: la IA mostró el plan del bloque móvil y lo aprobé antes de instalar nada.
+
+**Excepción a la regla de versiones (precedente: sesión 12, versiones exactas por cadena de suministro):** las dependencias directas de `mobile` se fijaron con versión exacta publicada el **2026-11-08 o antes** (dos semanas antes de la sesión). Por eso se usa `expo@58.0.23` y no la `latest` 58.0.26, y el resto sale de su `bundledNativeModules.json`. Varias transitivas, en cambio, se resolvían a versiones posteriores al corte por los rangos `^` y `~` de sus dependientes.
+
+| Propuesta | Decisión | Motivo |
+|---|---|---|
+| Fijar las transitivas posteriores al corte en `overrides` de la raíz | Intentada y descartada | npm 11.12.1 no aplicó los overrides nuevos: no quedaron en el lockfile y resolvió las mismas versiones. Al quitar sus entradas del lockfile y reinstalar (intento único), npm dejó fuera `@expo/cli`, `@expo/metro-config`, `babel-preset-expo` y `@react-navigation/elements`, y el árbol quedó incompleto. Se restauró el lockfile desde un respaldo y se quitaron los overrides |
+| Aceptar las transitivas posteriores al corte | Aceptada, como excepción | Se aceptan `@expo/cli` 58.1.21, `@expo/metro-config` 58.0.23, `babel-preset-expo` 58.0.26, `@react-navigation/core` 7.25.0, `@react-navigation/elements` 2.9.46 y `@react-navigation/native` 7.5.2. Son paquetes oficiales de Expo y React Navigation, publicados 5 a 7 días antes de la sesión. Las dependencias directas sí respetan el corte del 8-nov |
+| `@react-navigation/native` directo en 7.5.1 | Cambiado a 7.5.2 exacta | `native-stack` resolvía la 7.5.2 y quedaban dos copias. Con 7.5.2 hay una sola copia de cada paquete de navegación |
+
+**Ampliación de la excepción a todas las transitivas posteriores al corte.** El reporte del lockfile contra `HEAD` encontró 610 paquetes nuevos, todos del árbol de `mobile`; ninguna entrada de `HEAD` se quitó ni cambió de versión. De esos 610, **54 se publicaron después del 8-nov**. Se acepta la excepción para los 54, que incluyen los 6 de la tabla anterior:
+
+| Grupo | Paquetes | Publicados |
+|---|---|---|
+| Los 6 de la tabla anterior | `@expo/cli`, `@expo/metro-config`, `babel-preset-expo`, `@react-navigation/core`, `@react-navigation/elements`, `@react-navigation/native` | 15 al 17-nov |
+| Expo oficiales (20) | `expo-file-system` 58.0.14, `@expo/router-server` 58.0.23, `expo-asset` 58.0.21, `expo-constants` 58.0.16, `expo-font` 58.0.12, `expo-keep-awake` 58.0.4, `expo-modules-jsi` 58.0.23, `expo-modules-autolinking` 58.1.0, `expo-server` 58.1.0, `@expo/config` 58.0.12, `@expo/config-plugins` 58.0.13, `@expo/prebuild-config` 58.0.20, `@expo/env` 2.6.0, `@expo/fingerprint` 0.21.10, `@expo/image-utils` 0.12.7, `@expo/inline-modules` 0.2.10, `@expo/local-build-cache-provider` 58.0.12, `@expo/metro-file-map` 58.0.6, `@expo/plist` 0.10.2, `@expo/require-utils` 58.0.6 | 11 al 17-nov |
+| `noxcturnal` (9) | `noxcturnal` 0.1.14 y sus 8 binarios `@noxcturnal/noxcturnal-<plataforma>` 0.1.14 | 16-nov |
+| React Navigation (1) | `@react-navigation/routers` 7.6.6 | 15-nov |
+| Babel (10) | 7.29.15: `plugin-transform-typescript`, `plugin-transform-for-of`, `plugin-transform-block-scoping`, `plugin-transform-export-namespace-from`, `plugin-proposal-export-default-from` y `helper-wrap-function`. 7.29.14: `plugin-transform-modules-commonjs`, `plugin-transform-class-static-block`, `helper-member-expression-to-functions` y `helper-create-regexp-features-plugin` | 7.29.15: 20-nov (2 días); 7.29.14: 11-nov |
+| `terser` (1) | 5.51.4 | 20-nov (2 días) |
+| Utilidades (7) | `ws` 8.23.0 y 7.5.14, `graceful-fs` 4.2.12, `encodeurl` 1.0.4, `brace-expansion` 1.1.22, `@sinonjs/fake-timers` 15.5.0, `ci-info` 4.5.0 | 9 al 15-nov |
+
+**`noxcturnal`:** lo pide `@expo/metro-config` 58.0.23 (`^0.1.14`). El repositorio es `github.com/expo/noxcturnal`, de la organización de Expo, y se describe como "Native-backed JavaScript transform runtime". El paquete existe desde el 2026-08-03; solo la versión 0.1.14 es posterior al corte. No tiene scripts de instalación, y los binarios nativos llegan como dependencias opcionales por plataforma (en Windows solo se instala `win32-x64-msvc`).
+
+**Mitigación (verificaciones de solo lectura):**
+- **Ninguno de los 54 tiene `hasInstallScript` en el lockfile.** En todo el lockfile hay 5 paquetes con script de instalación. Cuatro ya estaban en `HEAD` (`@scarf/scarf`, `argon2`, `esbuild`, `fsevents`). El único nuevo es `@parcel/watcher` 2.6.0 (20-jul, anterior al corte), que trae `jest-haste-map` de Jest 30. Su script `install` solo compila desde el código fuente si `npm_config_build_from_source=true`; si no, no hace nada y se usa el binario precompilado.
+- **`npm audit signatures`:** 1,332 paquetes con firma del registro verificada, 317 con attestations verificadas y ninguna firma faltante o inválida.
+
+**Verificación:** `npm ls` muestra una sola versión de `react` (19.3.0, igual que la web, DD-01) y de cada paquete de la primera tabla. Las entradas de `api`, `web` y `packages/shared` en `package-lock.json` son idénticas a las de `HEAD`. El `invalid` de `ajv` que reporta `npm ls --all` para `@hookform/resolvers` de `web` ya existía antes de esta tarea.
+
+**Esqueleto:**
+- `mobile` es `"type": "module"`, igual que el resto del monorepo (DD-05). `jest-expo` y el typecheck funcionaron sin archivos `.cjs` ni `babel.config`, y sin `metro.config`.
+- `validarConfig` es pura y rechaza la URL ausente, la vacía, la que no es http(s) y el marcador `<IP-de-la-LAN>` de `.env.example` copiado sin editar. No rechaza `localhost`: la prueba manual debe ver que **falla en el teléfono**. No usa `URL`, cuyo soporte en React Native es parcial.
+- La pantalla de salud muestra `GET /health` y los montos de R-2.5. Jest corre en Node, así que solo la prueba manual verifica Hermes.
+
+**Hallazgo de la prueba manual: Hermes no acepta BigInt en `formatToParts` (rama de respaldo de D-18 punto 5).** En Expo Go SDK 58, el bundle compiló, pero la app lanzó `TypeError: Cannot convert BigInt to number`. `formatearMXN` llama a `FORMATO_MXN.formatToParts(BigInt(pesos))`, y Hermes no acepta BigInt en `Intl.NumberFormat`. Es el caso que prevén D-18 punto 5 y T-MOB-01. Decisión (opción A):
+- `shared` agrega `formatearMXNSinIntl`. Agrupa los miles sobre el texto con una expresión regular, sin `Intl`, sin aritmética y sin `/ 100`, y da el mismo resultado que `formatearMXN`. `design.md` §13.1 la documenta.
+- La app móvil usa `formatearMXNSinIntl`, y la web sigue con `formatearMXN`. El lint de `mobile` prohíbe importar `formatearMXN` desde `@billetera/shared`.
+- Pruebas en `shared`: los casos de R-2.5 en las dos funciones, y una prueba de equivalencia entre ambas sobre 26 montos, incluidos negativos, `5` → `$0.05` y `±TOPE_CENTAVOS`.
+- La pantalla de salud ya no llama a `formatToParts` con BigInt para formatear. Solo informa, dentro de un `try/catch`, si el motor acepta `formatToParts` con `number` y con `BigInt`.
+- **Mutación:** con el separador de miles cambiado de `,` a espacio, 12 casos de la prueba de equivalencia se pusieron en rojo. Se revirtió y el `sha256sum` volvió a ser idéntico.
+- Hay una prueba de que `react-native` resuelve la misma copia de `react` que `mobile` (DD-01).
+
+**Correcciones a la IA:**
+- La primera versión de la pantalla llamaba a `setState` dentro de un efecto (`react-hooks/set-state-in-effect`). Ahora el estado solo se actualiza en el callback de la petición, y "Reintentar" incrementa un contador.
+- La prueba de React único usaba `node:path` y `require()`. Fallaba en el typecheck, porque `mobile` no tiene tipos de Node, y en el lint. Se reescribió sin `node:path` y con `import { version } from 'react'`.
+
+**Mutación:** con `validarConfig` cayendo a `http://localhost:3000/api` cuando falta la variable, la prueba de URL ausente se puso en rojo. Se revirtió y el `sha256sum` volvió a ser idéntico.
+
+**Prueba manual (aprobada)** en un Samsung A34 con Expo Go SDK 58, ya con `formatearMXNSinIntl`:
+- Con `EXPO_PUBLIC_API_URL` apuntando a la IP de la computadora en la LAN: "Estado: ok"; los montos `$0.05`, `$1.00`, `$1,234.56` y `-$2.50`; `formatToParts` con `number`: sí; con `BigInt`: no.
+- Con `http://localhost:3000/api`: falla en el teléfono con "No se pudo conectar con http://localhost:3000/api…" y "Reintentar".
+
+**Decisión mía:** se queda la regla de lint que prohíbe importar `formatearMXN` en `mobile`.
+
+**Agregado al cerrar:** `expo start` crea `mobile/.expo/`, que es estado local y no debe versionarse. Se agregan `.expo/` y `expo-env.d.ts` a `.gitignore`, igual que ya los ignoraba el lint.
+
+**Commits relacionados:** `28bdb67` (`formatearMXNSinIntl` en `design.md` §13.1) y el de T-MOB-01.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
