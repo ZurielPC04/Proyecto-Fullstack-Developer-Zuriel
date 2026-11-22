@@ -845,6 +845,18 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-WEB-02):** `67e1dba` (H2), `18a8e1b` (H1), el de los mensajes de Zod y el de T-WEB-02.
 
+**Decisiones de implementación (T-WEB-03):**
+- Sin correcciones a los requerimientos.
+- `useCuentas` (`['cuentas']`) y `useLimites` (`['limites']`) en `src/consultas/cuentas.ts`. Lo disponible sale tal cual de `GET /limites` (R-6.7); la web no resta nada.
+- Cada tarjeta es un `listitem` nombrado por su encabezado, con el saldo, la CLABE y el enlace al historial. Los montos pasan todos por `formatearMXN`.
+- El enlace "Ver movimientos" lleva `aria-label="Ver movimientos de <cuenta>"`. Con un `<span>` oculto, jsdom calculaba el nombre sin el espacio ("movimientosde"); el `aria-label` empieza con el texto visible (WCAG 2.5.3).
+- `ErrorConReintento` y `mensajeDeError` (texto de `mensajeDeProblema` o el de error de red) se reutilizan en el historial y en beneficiarios.
+- La prueba de error espera hasta 3 s: la consulta hace su único reintento ante un `500` con el retardo por defecto de TanStack Query (1 s).
+- Mutación: mostrar el saldo como `${saldoCentavos}` sin `formatearMXN` → roja la prueba de R-2.5 (no encuentra `$1,234.56`); revertida con `sha256sum` idéntico.
+- `vite build` avisa que el chunk pasa de 500 kB; queda para T-WEB-09 o para "qué haría con más tiempo".
+
+**Commits relacionados (T-WEB-03):** el de T-WEB-03.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

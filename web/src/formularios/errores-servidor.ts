@@ -1,9 +1,7 @@
 import { mensajeDeProblema } from '@billetera/shared';
 import type { FieldValues, Path, UseFormSetError } from 'react-hook-form';
-import { ErrorApi, ErrorRed } from '../api/errores';
-
-export const MENSAJE_SIN_RED =
-  'No pudimos contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
+import { ErrorApi } from '../api/errores';
+import { mensajeDeError } from '../api/mensaje-error';
 
 type ErrorDeCampo = { campo: string; mensaje: string };
 
@@ -24,8 +22,7 @@ export function aplicarErrorDelServidor<T extends FieldValues>(
   campos: readonly Path<T>[],
   porTipo: Partial<Record<string, Path<T>>> = {},
 ): string | null {
-  if (error instanceof ErrorRed) return MENSAJE_SIN_RED;
-  if (!(error instanceof ErrorApi)) return mensajeDeProblema('internal-error');
+  if (!(error instanceof ErrorApi)) return mensajeDeError(error);
 
   let enCampo = false;
   for (const { campo, mensaje } of erroresDeCampo(error)) {
@@ -42,5 +39,5 @@ export function aplicarErrorDelServidor<T extends FieldValues>(
     setError(campo, { type: 'servidor', message: mensajeDeProblema(type) }, { shouldFocus: true });
     return null;
   }
-  return mensajeDeProblema(type);
+  return mensajeDeError(error);
 }
