@@ -435,11 +435,13 @@ paths:
         '401': { $ref: '#/components/responses/NoAutenticado' }
         '404': { $ref: '#/components/responses/NoEncontrado' }
         '422':
-          description: Rechazo de negocio, misma cuenta o llave reutilizada con otro cuerpo.
+          description: |
+            Rechazo de negocio, misma cuenta o llave reutilizada con otro cuerpo. `anyOf` y no
+            `oneOf`: todo `ProblemaRechazo` cumple también `Problema`.
           content:
             application/problem+json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: '#/components/schemas/ProblemaRechazo'
                   - $ref: '#/components/schemas/Problema'
               examples:

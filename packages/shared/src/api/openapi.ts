@@ -1168,7 +1168,10 @@ export interface operations {
             400: components["responses"]["ErrorValidacion"];
             401: components["responses"]["NoAutenticado"];
             404: components["responses"]["NoEncontrado"];
-            /** @description Rechazo de negocio, misma cuenta o llave reutilizada con otro cuerpo. */
+            /**
+             * @description Rechazo de negocio, misma cuenta o llave reutilizada con otro cuerpo. `anyOf` y no
+             *     `oneOf`: todo `ProblemaRechazo` cumple también `Problema`.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
