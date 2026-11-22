@@ -759,6 +759,27 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-25):** `d8d5d1e` (H3) y el de T-API-25.
 
+**Correcciones a los requerimientos (T-API-26):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §3.7 no decía si las `TERCERO` del volumen llevan beneficiario, ni cómo se cumple la semilla fija | Un `ENVIO` sin beneficiario no tendría `etiqueta` en el historial (§8.1); y con `random()` el resultado depende del orden en que PostgreSQL evalúa las filas | H4: beneficiarios por SQL (Carga → cada sintético; cada sintético → Carga y → sus 5 siguientes); uuid, CLABEs, llaves, montos y fechas salen de `md5(semilla ‖ n)`; los sintéticos tienen un hash que no corresponde a ninguna contraseña |
+
+**Decisiones de implementación (T-API-26):**
+- `src/scripts/seed/volumen.ts`, como dueño y en una sola transacción. Usa funciones temporales de la sesión (`pg_temp.h`, `pg_temp.u` y otras) para los valores deterministas, y una tabla temporal con el plan de las 60,000 transferencias:
+  - Carga → sintético, 12,000;
+  - sintético → Carga, 12,000;
+  - traspasos de Carga en los dos sentidos, 5,000 y 5,000;
+  - entre sintéticos, 18,000;
+  - traspasos de sintéticos, 8,000.
+- Un fondeo por cuenta, fechado 181 días atrás y antes de todo el volumen: $100,000,000.00 en las cuentas de Carga y $5,000,000.00 en las de los sintéticos. Montos de 100 a 50,000 centavos.
+- Resultado: 203 usuarios, 407 cuentas, 1,402 beneficiarios, 60,404 transferencias y **120,808 asientos**. La Principal de Carga tiene **34,001 movimientos**, con los cinco tipos: 1 `DEPOSITO`, 12,000 `ENVIO`, 12,000 `RECEPCION`, 5,000 `TRASPASO_SALIDA` y 5,000 `TRASPASO_ENTRADA`. Las fechas van del 26 de mayo al 21 de noviembre de 2026. Las invariantes cuadran. La corrida completa tarda de 72 a 88 s.
+- **Problema encontrado:** la primera corrida tardó 55 s, pero las dos siguientes se quedaron más de 20 minutos en el `COMMIT`. Después del `TRUNCATE`, `asiento` tenía `reltuples = 4` con 1,460 páginas, así que los constraint triggers diferidos (D-14), que se planean al confirmar, recorrían la tabla completa en cada una de sus ~180,000 comprobaciones. Lanzar las dos corridas a la vez empeoró la situación: la segunda esperó el lock del `TRUNCATE` hasta que las cancelé. La corrección es un `ANALYZE` de las tablas del volumen dentro de la transacción, antes del `COMMIT` (ve las filas propias aún sin confirmar). El `ANALYZE` final de §3.7 se mantiene.
+- Dos corridas seguidas dan el mismo resumen (`diff`).
+- Mutación (e): en una corrida de prueba, después del `COMMIT`, se deshabilitaron los triggers de usuario de `asiento` y se insertó un asiento suelto de 1 centavo en la cuenta caliente. Roja: el seed terminó con código 1 y `saldo distinto de SUM(asientos) en 1 cuenta(s)`. Se revirtió (hash verificado), se comprobó que los tres triggers de `asiento` quedaron activos (`O`) y se volvió a sembrar limpio (código 0).
+
+**Commits relacionados (T-API-26):** `6629be7` (H4) y el de T-API-26.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

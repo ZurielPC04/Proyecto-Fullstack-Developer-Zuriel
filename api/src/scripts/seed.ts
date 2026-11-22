@@ -9,9 +9,11 @@ import { sembrarDemo } from './seed/demo.js';
 import { revisarEntornoSeed } from './seed/guarda.js';
 import { leerResumen } from './seed/resumen.js';
 import { vaciar } from './seed/vaciar.js';
+import { sembrarVolumen } from './seed/volumen.js';
 import { evaluarVerificacion, leerReporte } from './seed/verificacion.js';
 
 const logger = crearLogger();
+const UMBRALES = { asientosMinimos: 100_000, cuentaCalienteMinima: 30_000 };
 const entorno = revisarEntornoSeed(process.env);
 
 if (!entorno.ok) {
@@ -36,8 +38,12 @@ if (!entorno.ok) {
     );
     logger.info('fase 1: usuarios demo creados por los casos de uso');
 
-    const reporte = await leerReporte(dueno, null);
-    const fallas = evaluarVerificacion(reporte, { asientosMinimos: 0, cuentaCalienteMinima: null });
+    const { cuentaCalienteId } = await sembrarVolumen(dueno);
+    logger.info('fase 2: volumen insertado por SQL y ANALYZE');
+
+    // §3.7 y RNF-14: invariantes de RNF-07, 100,000 asientos o más y la cuenta caliente.
+    const reporte = await leerReporte(dueno, cuentaCalienteId);
+    const fallas = evaluarVerificacion(reporte, UMBRALES);
     // Duración en milisegundos enteros, con BigInt: no es un monto, pero DD-42 no admite redondeos.
     const milisegundos = Number((process.hrtime.bigint() - inicio) / 1_000_000n);
     const verificacion = {
