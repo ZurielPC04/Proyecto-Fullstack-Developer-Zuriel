@@ -805,6 +805,24 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 ---
 
+### Sesión 23 — 2026-11-22 · Implementación de T-WEB-01 a T-WEB-05 (esqueleto, sesión, resumen, historial y beneficiarios de la web)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó las cinco tareas y T-WEB-06, T-WEB-07 y T-WEB-09, R-1.12 a R-1.16, R-2.5, R-2.6, R-3.x, R-5.x, R-6.7, §1.1, §1.3, §5.3, §5.4, §13.1, §13.2, DD-03, DD-04, DD-24, DD-43, el contrato y `packages/shared`, y propuso un solo plan con sus seams, una tabla de dependencias (versión exacta y fecha, todas con dos semanas o más) y tres huecos (H1 a H3). Lo aprobé una vez, con un ajuste: los mensajes de Zod en español (H2) van antes de T-WEB-02 y no antes de T-WEB-05.
+
+**Decisiones de implementación (T-WEB-01):**
+- `web/` con Vite 8.3.6, React 19.3.0 (la versión exacta que fija Expo 58 en `bundledNativeModules.json`, DD-01), React Router 8.5.1 y TanStack Query 5.107.1. `vite.config.ts` sirve en `5173` con `strictPort` y hace proxy de `/api` a `localhost:3000` (§1.3, D-06).
+- **Problema encontrado:** al instalar, npm dejó en la raíz `react@19.3.1` y `vite@8.3.8` como dependencias peer de otras librerías, y las versiones fijadas quedaron anidadas en `web/node_modules`: dos copias de React. Se resolvió con `overrides` en la raíz (`react`, `react-dom` y `vite`), que dejan una sola copia y además protegen DD-01 cuando llegue `mobile`.
+- `crearQueryClient()` con `staleTime` de 30 s, un reintento salvo 4xx (`debeReintentar`) y mutaciones sin reintento (§13.2). `ErrorApi` y `ErrorRed` viven desde ahora en `src/api/errores.ts`.
+- Tokens de color AA en `src/estilos/tokens.css`, con la razón de contraste de cada uno anotada, y foco visible con `:focus-visible`. jsdom no implementa canvas: el setup de las pruebas devuelve `null` en `getContext` para que axe no llene la salida de avisos.
+- `vitest-axe@0.1.0` declara sus tipos para el espacio `Vi` de Vitest 0.x; el setup declara `toHaveNoViolations` en `Matchers<R, T>` de Vitest 5.
+- Script `dev` en la raíz con `concurrently` (faltaba, aunque §1.3 lo describe: H3). Verificado: `npm run dev` levanta API y web, `GET http://localhost:5173/` responde `200` y `GET http://localhost:5173/api/health` responde `200` desde la API.
+- `eslint.config.js`: reglas de `eslint-plugin-react-hooks` y globales del navegador en `web/**`.
+- `.nvmrc` dice `24`. jsdom 31 pide Node ≥ 24.15, y `setup-node` resuelve la 24.x más reciente, así que no se cambió.
+
+**Commits relacionados (T-WEB-01):** el de T-WEB-01.
+
+---
+
 ## Propuestas inseguras o incorrectas con el dinero
 
 Registro específico de lo que la IA propuso y era riesgoso para la integridad del dinero.

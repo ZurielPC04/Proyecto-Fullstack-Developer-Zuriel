@@ -2,6 +2,8 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 import { defineConfig, globalIgnores } from 'eslint/config';
+import reactHooks from 'eslint-plugin-react-hooks';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 // DD-42 (design.md §13.1): en el sistema no existe ninguna operación de redondeo (D-18).
@@ -121,6 +123,14 @@ export default defineConfig(
         },
       ],
     },
+  },
+  // DD-03: la web es React en el navegador; reglas de hooks y globales del DOM.
+  {
+    name: 'billetera/web',
+    files: ['web/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    languageOptions: { globals: globals.browser },
+    rules: reactHooks.configs.flat.recommended.rules,
   },
   {
     name: 'billetera/scripts-node',

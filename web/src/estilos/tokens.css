@@ -1,0 +1,150 @@
+/* RNF-19: tokens de color con contraste WCAG AA verificado sobre --color-fondo (#ffffff).
+   Razones de contraste: texto 16.1:1, texto-suave 8.9:1, primario 6.6:1, error 6.9:1,
+   exito 6.5:1, borde (no texto) 3.3:1 para los controles (WCAG 1.4.11). */
+:root {
+  --color-fondo: #ffffff;
+  --color-superficie: #f4f6f8;
+  --color-texto: #1a1a1a;
+  --color-texto-suave: #4a4a4a;
+  --color-primario: #0b5cad;
+  --color-sobre-primario: #ffffff;
+  --color-error: #b00020;
+  --color-exito: #1e6b34;
+  --color-borde: #8a8f98;
+  --color-foco: #0b5cad;
+
+  font-family: system-ui, sans-serif;
+  color: var(--color-texto);
+  background: var(--color-fondo);
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+}
+
+/* RNF-19: foco visible en todos los controles. */
+:focus-visible {
+  outline: 3px solid var(--color-foco);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--color-primario);
+}
+
+.encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--color-superficie);
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.encabezado nav ul {
+  display: flex;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.marca {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.principal {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.tarjetas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+}
+
+.tarjeta {
+  padding: 1rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 0.5rem;
+  background: var(--color-fondo);
+}
+
+.monto {
+  font-variant-numeric: tabular-nums;
+}
+
+.esqueleto {
+  min-height: 4rem;
+  border-radius: 0.5rem;
+  background: var(--color-superficie);
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.campo input,
+.campo select {
+  padding: 0.5rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 0.25rem;
+  font: inherit;
+  color: var(--color-texto);
+  background: var(--color-fondo);
+}
+
+.campo input[aria-invalid='true'] {
+  border-color: var(--color-error);
+}
+
+button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-primario);
+  border-radius: 0.25rem;
+  font: inherit;
+  color: var(--color-sobre-primario);
+  background: var(--color-primario);
+  cursor: pointer;
+}
+
+button.secundario {
+  color: var(--color-primario);
+  background: var(--color-fondo);
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+td.monto,
+th.monto {
+  text-align: right;
+}
