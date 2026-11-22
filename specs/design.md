@@ -2404,7 +2404,7 @@ Sin dependencias de React, de Node ni de Expo. Lo usan la API, la web y la app m
 
 | Módulo | Exporta | Requisitos |
 |---|---|---|
-| `dinero` | `montoTextoACentavos`, `formatearMXN`, `centavosATextoDecimal`, `TOPE_CENTAVOS` | R-2.5, R-4.33, R-4.34, R-B1.2, D-18 |
+| `dinero` | `montoTextoACentavos`, `formatearMXN`, `formatearMXNSinIntl`, `centavosATextoDecimal`, `TOPE_CENTAVOS` | R-2.5, R-4.33, R-4.34, R-B1.2, D-18 |
 | `clabe` | `digitoVerificador`, `validarClabe` | R-3.2 a R-3.4, R-3.10, D-19 |
 | `tiempo` | `ZONA_HORARIA`, `instanteIso` (DD-22) | D-15 |
 | `esquemas` | Esquemas Zod de entrada: registro, login, refresh, beneficiario, transferencia (con `destino` discriminado, DD-26), confirmación, `Idempotency-Key`, filtros del historial, mes; `normalizarTexto` (`trim` + NFC); y la lista de contraseñas comunes (`contrasenas-comunes.ts`, generada por `scripts/generar-contrasenas-comunes.mjs`, §5.1) | RNF-01, RNF-18, DD-28 |
@@ -2438,6 +2438,14 @@ Casos de prueba: los de R-4.33, y además `"1.005"` → error, `"00.50"` → `50
 4. Antepone el signo: `-250` → `-$2.50`.
 
 En la primera tarea móvil se verifica que Hermes soporte `formatToParts`. Si no lo soporta, se usa un formateo manual de miles con los mismos casos de prueba (D-18).
+
+**`formatearMXNSinIntl(centavos)`** (D-18 punto 5; T-MOB-01). La prueba manual de T-MOB-01 confirmó la rama de respaldo: en Hermes (Expo Go SDK 58), `formatToParts(BigInt(...))` lanza `TypeError: Cannot convert BigInt to number`. La app móvil usa esta función, y la web sigue con `formatearMXN`.
+
+1. Separa el signo, los pesos y los centavos igual que `formatearMXN` (pasos 1 y 2).
+2. Agrupa los dígitos de los pesos de tres en tres con `,`, sobre el texto, con una expresión regular. No usa `Intl`, ni aritmética, ni `/ 100`.
+3. Devuelve `signo + "$" + pesos agrupados + "." + centavos`: `-123456` → `-$1,234.56`.
+
+Las pruebas de `shared` corren los casos de R-2.5 en las dos funciones y comparan sus resultados sobre una tabla común que incluye negativos, `5` → `$0.05` y `±TOPE_CENTAVOS`. El lint de `mobile` prohíbe importar `formatearMXN`.
 
 **`centavosATextoDecimal(centavos)`** hace la misma separación de texto, sin `Intl`, para el CSV: `-5` → `-0.05`, `0` → `0.00` (DD-38).
 
