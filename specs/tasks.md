@@ -586,7 +586,7 @@ flowchart LR
 - **Alcance** (§2.2 middleware 11, §10.1, §10.2): middleware `demoLatencia` después del caso de uso y antes de responder; prueba de fugas que recorre los flujos de registro, login, refresh, transferencia con código y confirmación capturando el log; revisión del catálogo de auditoría de §10.2 contra los eventos emitidos.
 - **Verificación:** `-t "RNF-12|RNF-11|R-6.16"`:
   - el log capturado no contiene contraseña, tokens, cookie, `Authorization`, el código ni la CLABE completa;
-  - el correo aparece enmascarado;
+  - el correo completo no aparece en el log; la API no lo registra, y donde sí queda, en el evento `login-fallido`, aparece enmascarado (`a***@dominio`);
   - cada línea de una petición trae `reqId`;
   - cada flujo de §10.2 deja su evento;
   - con `DEMO_LATENCIA_MS=200`, la transferencia queda confirmada en la base antes de que llegue la respuesta.

@@ -343,7 +343,7 @@ Orden de los middlewares en `app.ts`:
 | 8 | `/api/auth/*` | Rate limit por ruta (§11) y `validar` | HU-1 |
 | 9 | `autenticar` | Verifica el JWT y pone `req.usuarioId`; si falla, `401`. Fija `Cache-Control: no-store` en toda respuesta autenticada (DD-38) | R-1.11 |
 | 10 | Rutas de módulos | `validar({ params, query, body, headers })` → controlador | — |
-| 11 | `demoLatencia` | Solo en `POST /transferencias` y `POST /transferencias/{id}/confirmar`, después del caso de uso y antes de responder; solo si `DEMO_LATENCIA_MS > 0` | D-17 |
+| 11 | `demoLatencia` | Solo en `POST /transferencias` y `POST /transferencias/{id}/confirmar`, después del caso de uso y antes de responder; solo si `DEMO_LATENCIA_MS > 0`. Un middleware posterior al router ya no corre cuando el controlador respondió, así que se monta en esas dos rutas, antes del controlador, y retrasa el envío envolviendo `res.json`: la espera queda después del `COMMIT` del caso de uso | D-17 |
 | 12 | `noEncontrado` | Cualquier otra ruta → `404 not-found` | RNF-01 |
 | 13 | `manejadorErrores` | Traduce a problem RFC 7807 (§7); registra la causa interna solo en el log | RNF-01 |
 
