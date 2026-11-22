@@ -1,3 +1,4 @@
+import './app/zod-es';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter } from 'react-router';
