@@ -878,6 +878,32 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-WEB-05):** el de T-WEB-05.
 
+### Sesión 24 — 2026-11-22 · Implementación de T-WEB-06, T-WEB-07 y T-WEB-09 (transferencia, código, reanudación y accesibilidad de la web)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó las tres tareas, R-1.12, R-4.11, R-4.12, R-4.20 a R-4.25, R-4.33, R-6.15, R-6.18, RNF-19, RNF-25, §6.2, §6.5, §6.6, §13.2, DD-25, DD-32, DD-34, DD-43, el contrato de transferencias y `web/src`, y propuso un solo plan sin dependencias nuevas, con sus seams y tres huecos (H1 a H3). Lo aprobé una vez, sin ajustes.
+
+**Correcciones a los requerimientos (commit `docs(specs)` previo a T-WEB-06):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §13.2: `Enviando` pasa a `ErrorReintentable` con "red, timeout de 15 s o 503" y a `Rechazado` con "422" | No decía qué hacer con un `500`, un `404`, un `400` o un `401` que el refresh no resolvió. Cerrar el intento ante un `500` y mandar después una llave nueva podía duplicar una transferencia que sí se aplicó | H1: un resultado incierto (red, timeout, cualquier `5xx`, `401`) conserva la llave y el intento; los demás `4xx` cierran en `Rechazado`, porque la API no guardó nada o guardó un rechazo |
+| §13.2 "Reanudación": la fase `confirmacion` "pasa a `ConfirmandoCodigo` (reenvía la confirmación)"; DD-25 habla de "el reenvío con la misma llave" | Una recarga en la pantalla del código deja la fase `confirmacion` **sin** código que reenviar, y reenviar la creación contradice la tabla de §6.2 ("nunca la creación") | H2: con código en vuelo, `ConfirmandoCodigo`; sin código, `VerificandoEstado` con `GET /transferencias/{id}`, y la captura usa el `codigoSimulado` guardado. Se precisó DD-25 y la tabla de §6.2 |
+| §13.2: `VerificandoEstado` solo tenía las salidas del `GET` exitoso | Un `GET` fallido dejaba la máquina sin salida | H3: estado `ErrorVerificacion`, cuyo "Reintentar" repite el `GET` (solo lectura) |
+
+**Decisiones de implementación (T-WEB-06):**
+- `api.postConEstado` en `cliente.ts`: acepta encabezados propios (`Idempotency-Key`) y devuelve el status, para distinguir el `201` del `202`. La repetición tras un `401` reusa los mismos encabezados, así que lleva la misma llave.
+- La máquina vive en `src/transferencia/Transferir.tsx`, sin `useMutation` (DD-43). La llave nace con `crypto.randomUUID()` al pasar a `Confirmando` y se pierde al volver a `Editando` (R-4.20, R-4.24). En `ErrorReintentable` no hay "Editar": la petición pudo haber llegado.
+- El formulario usa React Hook Form con un esquema que convierte el monto con `montoTextoACentavos` (R-4.33), toma `concepto` y `referencia` de `esquemaTransferencia.shape` y termina en `.pipe(esquemaTransferencia)`, sin copiar el esquema de `shared` (DD-03). El origen y el destino son radios en un `fieldset` (`CampoOpciones`), para poder recorrerlos con el teclado (T-WEB-09); `user-event` no maneja `<select>` con flechas.
+- **Error propio encontrado por las pruebas:** `setEstado({ fase: 'enviando', ...intento })` dejaba la fase en `confirmando`, porque el estado anterior traía su propia `fase` y el spread la pisaba. Las pruebas del botón ocupado y de "Reintentar" lo detectaron; se corrigió pasando solo `llave`, `datos` y `valores`.
+- **Mutación que sobrevivió al principio:** al quitar la bandera de `useRef`, la prueba del doble clic con `usuario.dblClick` seguía en verde. Testing Library envuelve cada evento de `user-event` en su propio `act`, que pinta el botón deshabilitado antes del segundo clic; ni un `act` externo lo evita. La prueba ahora hace los dos clics nativos dentro de un solo `act` síncrono: dos eventos antes del siguiente render, que es justo el caso de DD-43. La del doble Enter se quedó con `user-event` (el camino real del teclado) y la protege el `disabled`.
+- Mutaciones, cada una revertida con `sha256sum` idéntico al original:
+  - quitar la bandera en `useRef` → roja la prueba del doble clic (2 peticiones);
+  - generar la llave en cada envío → rojas las dos pruebas de R-4.22 (llaves distintas en el reintento);
+  - no invalidar `['cuentas']`, `['movimientos']` y `['limites']` → rojas las dos variantes de la prueba de DD-43 (`expected 1 to be 2`).
+- El `202` queda en una pantalla mínima de "Código de confirmación"; la captura llega en T-WEB-07.
+
+**Commits relacionados (T-WEB-06):** `cb44c88` (H1 a H3) y el de T-WEB-06.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

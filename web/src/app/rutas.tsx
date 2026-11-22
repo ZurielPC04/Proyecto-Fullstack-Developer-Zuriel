@@ -6,6 +6,7 @@ import { Login } from '../pantallas/Login';
 import { NoEncontrada } from '../pantallas/NoEncontrada';
 import { Registro } from '../pantallas/Registro';
 import { Resumen } from '../pantallas/Resumen';
+import { Transferir } from '../transferencia/Transferir';
 import { Layout } from './Layout';
 
 /** Rutas de design.md §13.2. */
@@ -21,6 +22,7 @@ export const rutas: RouteObject[] = [
           { path: '/', element: <Resumen /> },
           { path: '/cuentas/:cuentaId', element: <Historial /> },
           { path: '/beneficiarios', element: <Beneficiarios /> },
+          { path: '/transferir', element: <Transferir /> },
         ],
       },
       { path: '*', element: <NoEncontrada /> },

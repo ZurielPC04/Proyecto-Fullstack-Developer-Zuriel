@@ -37,8 +37,9 @@ async function una(
   url: URL,
   body: unknown,
   accessUsado: string | null,
+  extra: Record<string, string> = {},
 ): Promise<Response> {
-  const cabeceras: Record<string, string> = {};
+  const cabeceras: Record<string, string> = { ...extra };
   if (accessUsado !== null) cabeceras.Authorization = `Bearer ${accessUsado}`;
   if (body !== undefined) cabeceras['Content-Type'] = 'application/json';
   return enviar(url, {
@@ -58,29 +59,40 @@ async function esUnauthorized(respuesta: Response): Promise<boolean> {
   }
 }
 
+type OpcionesPeticion = {
+  path?: unknown;
+  query?: unknown;
+  body?: unknown;
+  headers?: Record<string, string>;
+};
+
+/** Respuesta exitosa con su status: la transferencia distingue el `201` del `202` (§13.2). */
+export type RespuestaConEstado = { status: number; cuerpo: unknown };
+
 /**
  * DD-43: ante un `401 unauthorized` refresca una vez (dentro del Web Lock) y repite la
- * petición una sola vez. Un `401 credenciales-invalidas` no dispara el refresh.
+ * petición una sola vez, con los mismos encabezados (un `POST /transferencias` repite su
+ * llave). Un `401 credenciales-invalidas` no dispara el refresh.
  */
 async function peticion(
   metodo: Metodo,
   ruta: string,
-  opciones: { path?: unknown; query?: unknown; body?: unknown } = {},
-): Promise<unknown> {
+  opciones: OpcionesPeticion = {},
+): Promise<RespuestaConEstado> {
   const url = urlApi(
     sustituirRuta(ruta, opciones.path as Record<string, string> | undefined),
     opciones.query as Record<string, unknown> | undefined,
   );
   const accessUsado = obtenerAccess();
-  let respuesta = await una(metodo, url, opciones.body, accessUsado);
+  let respuesta = await una(metodo, url, opciones.body, accessUsado, opciones.headers);
   if (await esUnauthorized(respuesta)) {
     if (await refrescar(accessUsado)) {
-      respuesta = await una(metodo, url, opciones.body, obtenerAccess());
+      respuesta = await una(metodo, url, opciones.body, obtenerAccess(), opciones.headers);
     }
   }
   if (!respuesta.ok) throw await errorDeRespuesta(respuesta);
-  if (respuesta.status === 204) return undefined;
-  return respuesta.json();
+  if (respuesta.status === 204) return { status: 204, cuerpo: undefined };
+  return { status: respuesta.status, cuerpo: await respuesta.json() };
 }
 
 export const api = {
@@ -88,12 +100,26 @@ export const api = {
     ruta: P,
     opciones?: Opciones<Operacion<P, 'get'>>,
   ): Promise<Exito<Operacion<P, 'get'>>> {
-    return peticion('get', ruta, opciones) as Promise<Exito<Operacion<P, 'get'>>>;
+    return peticion('get', ruta, opciones).then((r) => r.cuerpo) as Promise<
+      Exito<Operacion<P, 'get'>>
+    >;
   },
   post<P extends RutaDe<'post'>>(
     ruta: P,
     opciones?: Opciones<Operacion<P, 'post'>>,
   ): Promise<Exito<Operacion<P, 'post'>>> {
-    return peticion('post', ruta, opciones) as Promise<Exito<Operacion<P, 'post'>>>;
+    return peticion('post', ruta, opciones).then((r) => r.cuerpo) as Promise<
+      Exito<Operacion<P, 'post'>>
+    >;
+  },
+  /**
+   * POST que devuelve también el status y acepta encabezados propios (`Idempotency-Key`).
+   * El cuerpo queda sin tipo: quien llama lo interpreta según el status.
+   */
+  postConEstado<P extends RutaDe<'post'>>(
+    ruta: P,
+    opciones: Opciones<Operacion<P, 'post'>> & { headers?: Record<string, string> },
+  ): Promise<RespuestaConEstado> {
+    return peticion('post', ruta, opciones);
   },
 };
