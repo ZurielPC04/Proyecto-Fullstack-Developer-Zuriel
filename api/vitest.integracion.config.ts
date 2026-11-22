@@ -23,7 +23,10 @@ export default defineConfig({
   oxc: { decorator: { legacy: true } },
   test: {
     environment: 'node',
-    include: modoFixture ? [`${FIXTURES}/*.test.ts`] : ['test/integracion/**/*.test.ts'],
+    // §14.2: la concurrencia (T-API-21) usa la misma base, globalSetup e invariantes.
+    include: modoFixture
+      ? [`${FIXTURES}/*.test.ts`]
+      : ['test/integracion/**/*.test.ts', 'test/concurrencia/**/*.test.ts'],
     exclude: modoFixture ? [...configDefaults.exclude] : [...configDefaults.exclude, FIXTURES],
     globalSetup: ['test/integracion/apoyo/global-setup.ts'],
     setupFiles: ['test/integracion/apoyo/por-archivo.ts'],

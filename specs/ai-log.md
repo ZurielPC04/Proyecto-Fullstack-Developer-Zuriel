@@ -675,7 +675,24 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - Mutaciones: (f) el fallo lanzado como excepción, de modo que la transacción se revierte: roja; la respuesta HTTP fue idéntica, pero `intentos` quedó en 0. (g) `===` en lugar de `timingSafeEqual`: verde en unitarias e integración, como se esperaba (regresión: el código incorrecto se sigue rechazando; el tiempo constante no se observa por comportamiento).
 - A mitad de la tarea agregué a `.claude/settings.local.json` (no versionado) los permisos de `lint:verificar-reglas`, `lint:contrato` y `build:shared`.
 
-**Commits relacionados (T-API-20):** el de T-API-20.
+**Commits relacionados (T-API-20):** `84c4c54`.
+
+**Correcciones a los requerimientos (T-API-21):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §14.2: la configuración de integración incluye "solo `test/integracion/**`"; `tasks.md`: verificación con `npm run test:integracion -- concurrencia` | `api/test/concurrencia/` (§14.3) no lo incluía ninguna configuración de Vitest, y en la raíz no existe el script `test:integracion` | H2: §14.2 incluye `test/concurrencia/**` (mismo `globalSetup` e invariantes), el comando pasa a `npm run test:integracion -w api -- concurrencia`, y `vitest.integracion.config.ts` lo incluye |
+
+**Decisiones de implementación (T-API-21):**
+- `api/test/concurrencia/transferencias.test.ts` con un `DataSource` de 10 conexiones y un servidor HTTP real (`app.listen(0)`). Los cuatro escenarios de §14.3 sin cursor; el del cursor queda `it.todo` hasta T-API-22.
+- 100 simultáneas: saldo para 60 envíos de 10000, límite diario alto solo en esa app; se exige exactamente 60 aplicadas y 40 `SALDO_INSUFICIENTE`. Los deadlocks se cuentan por los `warn` con `sqlstate: 40P01` del log capturado.
+- Mutaciones sobre los bloqueos:
+  - (h) sin `FOR UPDATE` en las cuentas: roja en las cruzadas (un `40P01` reintentado); la de 100 siguió en verde, porque el bloqueo del usuario serializa (corrección de plan aprobada).
+  - (i) `ORDER BY id DESC`: sobrevive en concurrencia y en las 49 pruebas de transferencias. Es un mutante equivalente: cualquier orden total evita los deadlocks.
+  - (j) bloquear origen y después destino, uno por uno: roja en las cruzadas.
+  - (k) sin bloqueo de usuario ni de cuentas: roja en la de 100 (201 + 422 = 92: ocho `500` por el `CHECK` de saldo, la última red de la base); las demás se agotaron por tiempo.
+
+**Commits relacionados (T-API-21):** `5659c7c` (H2) y el de T-API-21.
 
 ---
 
