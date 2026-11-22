@@ -780,6 +780,29 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-26):** `6629be7` (H4) y el de T-API-26.
 
+**Correcciones a los requerimientos (T-DOC-01):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §8.5: "se completa en la tarea que implementa el historial, en el mismo commit que su prueba" | `tasks.md` la separó en T-DOC-01, que depende también del seed de volumen (T-API-26) | La nota de pendiente se reemplazó por la medición; §8.5 queda cerrada en el commit de T-DOC-01 |
+
+**Decisiones de implementación (T-DOC-01):**
+- `src/scripts/explicar-historial.ts` y `db:explicar` (en `api` y en la raíz), como describe §8.5. Usan la guarda del seed, ejecutan `ANALYZE` como dueño y `EXPLAIN (ANALYZE, BUFFERS)` como `billetera_app`, con el texto y los parámetros de `construirConsultaMovimientos`: se mide la consulta real con parámetros enlazados, como en la API. El cursor profundo sale de la fila 25,000 (el `OFFSET` es solo del script). La variante 5 usa `SET LOCAL enable_indexscan = off` dentro de una transacción que se revierte.
+- Resultado sobre 120,808 asientos y la cuenta caliente de 34,001 movimientos:
+
+| # | Variante | Índice | Filas leídas de `asiento` | Tiempo |
+|---|---|---|---|---|
+| 1 | Primera página | `ix_asiento_historial` | 21 | 1.538 ms |
+| 2 | Cursor a 25,000 movimientos | `ix_asiento_historial`, tupla como `Index Cond` | 21 | 1.155 ms |
+| 3 | `tipo = ENVIO` | `ix_asiento_historial_tipo` | 21 | 0.688 ms |
+| 4 | Un mes | `ix_asiento_historial`, rango como `Index Cond` | 21 | 0.592 ms |
+| 5 | Sin `Index Scan` | `Parallel Seq Scan` + `Sort` | 120,808 recorridas | 38.615 ms |
+
+- Las variantes 1 a 4 son `Index Scan`, sin `Sort` y con las mismas 21 filas, incluida la profunda (RNF-13). La tupla del cursor salió como `Index Cond`, así que no hizo falta la alternativa de §8.2.
+- La integración cayó una vez con el `0xC0000409` de Windows (`registro`) y pasó completa en la segunda corrida.
+
+**Commits relacionados (T-DOC-01):** el de T-DOC-01.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

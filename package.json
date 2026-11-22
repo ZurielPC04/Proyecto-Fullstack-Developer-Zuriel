@@ -30,7 +30,8 @@
     "db:up": "docker compose up -d --wait",
     "db:migrate": "npm run db:migrate -w api",
     "db:migrate:revertir": "npm run db:migrate:revertir -w api",
-    "db:seed": "npm run db:seed -w api"
+    "db:seed": "npm run db:seed -w api",
+    "db:explicar": "npm run db:explicar -w api"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

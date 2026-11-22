@@ -1765,28 +1765,236 @@ AND a.creado_en < (($4::date) + 1)::timestamp AT TIME ZONE 'America/Mexico_City'
 > - El estado de cuenta (§9) reusa el mismo repositorio, con rango de fechas y sin `LIMIT`.
 > **Motivo:** con `$x IS NULL OR …`, PostgreSQL puede elegir un plan genérico que no use el índice por tipo. Con fragmentos fijos, cada combinación de filtros tiene un plan estable con su índice, y eso es lo que mide §8.5. La contraparte no revela datos del titular (R-3.6) ni el alias privado del emisor.
 
-### 8.5 `EXPLAIN ANALYZE` — ⏳ PENDIENTE
+### 8.5 `EXPLAIN ANALYZE`
 
-> **⏳ Pendiente hasta tener el seed de §3.7** (120,000 asientos o más, con una cuenta caliente de 30,000 o más). Esta subsección se completa en la tarea de `tasks.md` que implementa el historial, en el mismo commit que su prueba (RNF-14).
+Medido en T-DOC-01 (2026-11-22) sobre el seed de §3.7: **120,808 asientos**, con la cuenta caliente (la `Principal` de `carga@demo.mx`) en **34,001 movimientos**. PostgreSQL 17 en Docker (`docker-compose.yml`), con la base local.
 
-**Cómo se generará.** `npm run db:explicar` corre `api/src/scripts/explicar-historial.ts`: ejecuta `ANALYZE` y después `EXPLAIN (ANALYZE, BUFFERS)` sobre la cuenta caliente para cada variante. Su salida se pega aquí.
+**Cómo se genera.** `npm run db:explicar` corre `api/src/scripts/explicar-historial.ts`. Ejecuta `ANALYZE` como `billetera_owner` y después `EXPLAIN (ANALYZE, BUFFERS)` como `billetera_app`, el rol de la API. Mide la **consulta real**: el texto y los parámetros salen de `construirConsultaMovimientos`, el mismo constructor que usa el repositorio (DD-37), con parámetros enlazados como en la API. El cursor de la variante 2 se fabrica con la fila 25,000 de la cuenta; ese `OFFSET` es solo del script, no de la consulta medida.
 
 | # | Variante | Índice esperado | Resultado |
 |---|---|---|---|
-| 1 | Primera página, sin filtros, `limite = 20` | `ix_asiento_historial` | ⏳ |
-| 2 | Página profunda, con un cursor a unos 25,000 movimientos del inicio | `ix_asiento_historial`, con el cursor como `Index Cond` | ⏳ |
-| 3 | Filtro `tipo = ENVIO`, primera página | `ix_asiento_historial_tipo` | ⏳ |
-| 4 | Rango de un mes con `desde` y `hasta` | `ix_asiento_historial`, con el rango como `Index Cond` | ⏳ |
-| 5 | Referencia: la variante 1 con `SET enable_indexscan = off` | `Seq Scan` o `Bitmap Heap Scan`, más `Sort` | ⏳ |
+| 1 | Primera página, sin filtros, `limite = 20` | `ix_asiento_historial` | ✅ `Index Scan` sobre `ix_asiento_historial`, 21 filas, sin `Sort`, 1.538 ms |
+| 2 | Página profunda, con un cursor a unos 25,000 movimientos del inicio | `ix_asiento_historial`, con el cursor como `Index Cond` | ✅ `Index Scan` con la tupla como `Index Cond`, 21 filas, sin `Sort`, 1.155 ms |
+| 3 | Filtro `tipo = ENVIO`, primera página | `ix_asiento_historial_tipo` | ✅ `Index Scan` sobre `ix_asiento_historial_tipo`, 21 filas, sin `Sort`, 0.688 ms |
+| 4 | Rango de un mes con `desde` y `hasta` | `ix_asiento_historial`, con el rango como `Index Cond` | ✅ `Index Scan` con el rango como `Index Cond`, 21 filas, sin `Sort`, 0.592 ms |
+| 5 | Referencia: la variante 1 con `SET enable_indexscan = off` | `Seq Scan` o `Bitmap Heap Scan`, más `Sort` | `Parallel Seq Scan` sobre las 120,808 filas, más `Sort`, 38.615 ms |
 
-**Criterios de aceptación** para las variantes 1 a 4:
+**Criterios de aceptación** para las variantes 1 a 4, todos cumplidos:
 
 - El nodo que lee `asiento` es un `Index Scan` sobre el índice esperado; no `Seq Scan` ni `Bitmap Heap Scan`.
 - No hay nodo `Sort`.
-- Las filas leídas de `asiento` son del orden de `limite + 1`, **también en la variante 2**. Eso demuestra que el costo no crece con la profundidad de la página (RNF-13).
+- Las filas leídas de `asiento` son del orden de `limite + 1` (21), **también en la variante 2**. Eso demuestra que el costo no crece con la profundidad de la página (RNF-13).
 - Se registra el `Execution Time` de cada una; la variante 5 sirve de comparación.
 
-Si alguna variante no cumple, se aplica la alternativa de §8.2 o se ajusta el índice, y aquí se documentan el antes y el después.
+No hizo falta la alternativa de §8.2 ni ajustar ningún índice: la comparación de tuplas aparece como `Index Cond` (variante 2).
+
+Los tiempos son de una sola corrida en una laptop, con todo en caché (`shared hit`). Valen como orden de magnitud y como comparación entre variantes, no como referencia de producción.
+
+#### Variante 1 · Primera página, sin filtros, `limite = 20`
+
+`Index Scan` sobre `ix_asiento_historial` con `cuenta_id` como `Index Cond`. Lee 21 filas de `asiento` (`limite + 1`), sin `Sort`: el índice ya entrega el orden `creado_en DESC, id DESC`. Los tres `JOIN` son `Index Scan` por llave primaria, solo para esas 21 filas. **1.538 ms.**
+
+```text
+Limit  (cost=1.40..36.21 rows=21 width=114) (actual time=0.705..1.336 rows=21 loops=1)
+  Buffers: shared hit=210
+  ->  Nested Loop Left Join  (cost=1.40..56847.27 rows=34285 width=114) (actual time=0.704..1.330 rows=21 loops=1)
+        Join Filter: (a.monto_centavos < 0)
+        Rows Removed by Join Filter: 6
+        Buffers: shared hit=210
+        ->  Nested Loop  (cost=1.12..46220.92 rows=34285 width=117) (actual time=0.687..1.236 rows=21 loops=1)
+              Buffers: shared hit=171
+              ->  Nested Loop  (cost=0.84..28983.64 rows=34285 width=122) (actual time=0.653..1.068 rows=21 loops=1)
+                    Buffers: shared hit=108
+                    ->  Index Scan using ix_asiento_historial on asiento a  (cost=0.42..7493.34 rows=34285 width=50) (actual time=0.060..0.158 rows=21 loops=1)
+                          Index Cond: (cuenta_id = 'cc8dfc4e-d620-c605-1392-c5af66ee88c5'::uuid)
+                          Buffers: shared hit=24
+                    ->  Memoize  (cost=0.42..0.71 rows=1 width=88) (actual time=0.042..0.042 rows=1 loops=21)
+                          Cache Key: a.transferencia_id
+                          Cache Mode: logical
+                          Hits: 0  Misses: 21  Evictions: 0  Overflows: 0  Memory Usage: 5kB
+                          Buffers: shared hit=84
+                          ->  Index Scan using pk_transferencia on transferencia t  (cost=0.41..0.70 rows=1 width=88) (actual time=0.014..0.014 rows=1 loops=21)
+                                Index Cond: (id = a.transferencia_id)
+                                Buffers: shared hit=84
+              ->  Index Scan using pk_cuenta on cuenta co  (cost=0.28..0.50 rows=1 width=43) (actual time=0.007..0.007 rows=1 loops=21)
+                    Index Cond: (id = CASE WHEN (a.monto_centavos < 0) THEN t.cuenta_destino_id ELSE t.cuenta_origen_id END)
+                    Buffers: shared hit=63
+        ->  Index Scan using pk_beneficiario on beneficiario b  (cost=0.28..0.30 rows=1 width=29) (actual time=0.003..0.004 rows=1 loops=21)
+              Index Cond: (id = t.beneficiario_id)
+              Buffers: shared hit=39
+Planning:
+  Buffers: shared hit=629
+Planning Time: 2.613 ms
+Execution Time: 1.538 ms
+```
+
+#### Variante 2 · Página profunda: cursor a 25,000 movimientos del inicio
+
+`Index Scan` sobre `ix_asiento_historial` con `cuenta_id` **y la tupla `ROW(creado_en, id) < ROW(…)` como `Index Cond`**, no como `Filter`: no hace falta la alternativa de §8.2. Lee 21 filas y 24 buffers de `asiento`, lo mismo que la primera página, aunque el cursor está a 25,000 movimientos: el costo no crece con la profundidad (RNF-13). **1.155 ms.**
+
+```text
+Limit  (cost=1.40..73.87 rows=21 width=114) (actual time=0.451..1.050 rows=21 loops=1)
+  Buffers: shared hit=213
+  ->  Nested Loop Left Join  (cost=1.40..31978.58 rows=9266 width=114) (actual time=0.449..1.044 rows=21 loops=1)
+        Join Filter: (a.monto_centavos < 0)
+        Rows Removed by Join Filter: 11
+        Buffers: shared hit=213
+        ->  Nested Loop  (cost=1.12..29106.64 rows=9266 width=117) (actual time=0.441..0.968 rows=21 loops=1)
+              Buffers: shared hit=171
+              ->  Nested Loop  (cost=0.84..19186.59 rows=9266 width=122) (actual time=0.425..0.843 rows=21 loops=1)
+                    Buffers: shared hit=108
+                    ->  Index Scan using ix_asiento_historial on asiento a  (cost=0.42..6284.72 rows=9266 width=50) (actual time=0.032..0.131 rows=21 loops=1)
+                          Index Cond: ((cuenta_id = 'cc8dfc4e-d620-c605-1392-c5af66ee88c5'::uuid) AND (ROW(creado_en, id) < ROW('2026-07-13 01:54:54.462341+00'::timestamp with time zone, '65726'::bigint)))
+                          Buffers: shared hit=24
+                    ->  Memoize  (cost=0.42..1.43 rows=1 width=88) (actual time=0.033..0.033 rows=1 loops=21)
+                          Cache Key: a.transferencia_id
+                          Cache Mode: logical
+                          Hits: 0  Misses: 21  Evictions: 0  Overflows: 0  Memory Usage: 5kB
+                          Buffers: shared hit=84
+                          ->  Index Scan using pk_transferencia on transferencia t  (cost=0.41..1.42 rows=1 width=88) (actual time=0.015..0.015 rows=1 loops=21)
+                                Index Cond: (id = a.transferencia_id)
+                                Buffers: shared hit=84
+              ->  Index Scan using pk_cuenta on cuenta co  (cost=0.28..1.07 rows=1 width=43) (actual time=0.005..0.005 rows=1 loops=21)
+                    Index Cond: (id = CASE WHEN (a.monto_centavos < 0) THEN t.cuenta_destino_id ELSE t.cuenta_origen_id END)
+                    Buffers: shared hit=63
+        ->  Index Scan using pk_beneficiario on beneficiario b  (cost=0.28..0.30 rows=1 width=29) (actual time=0.003..0.003 rows=1 loops=21)
+              Index Cond: (id = t.beneficiario_id)
+              Buffers: shared hit=42
+Planning:
+  Buffers: shared hit=22
+Planning Time: 0.846 ms
+Execution Time: 1.155 ms
+```
+
+#### Variante 3 · Filtro `tipo = ENVIO`, primera página
+
+`Index Scan` sobre `ix_asiento_historial_tipo` con `cuenta_id` y `tipo_movimiento` como `Index Cond`. Lee 21 filas, sin `Sort`. Con fragmentos fijos (DD-37), el plan del filtro por tipo usa su índice. **0.688 ms.**
+
+```text
+Limit  (cost=1.40..62.32 rows=21 width=114) (actual time=0.123..0.636 rows=21 loops=1)
+  Buffers: shared hit=234
+  ->  Nested Loop Left Join  (cost=1.40..35020.48 rows=12070 width=114) (actual time=0.122..0.630 rows=21 loops=1)
+        Join Filter: (a.monto_centavos < 0)
+        Buffers: shared hit=234
+        ->  Nested Loop  (cost=1.12..31279.48 rows=12070 width=117) (actual time=0.116..0.558 rows=21 loops=1)
+              Buffers: shared hit=171
+              ->  Nested Loop  (cost=0.84..20539.40 rows=12070 width=122) (actual time=0.106..0.437 rows=21 loops=1)
+                    Buffers: shared hit=108
+                    ->  Index Scan using ix_asiento_historial_tipo on asiento a  (cost=0.42..6565.02 rows=12070 width=50) (actual time=0.053..0.161 rows=21 loops=1)
+                          Index Cond: ((cuenta_id = 'cc8dfc4e-d620-c605-1392-c5af66ee88c5'::uuid) AND (tipo_movimiento = 'ENVIO'::text))
+                          Buffers: shared hit=24
+                    ->  Memoize  (cost=0.42..1.20 rows=1 width=88) (actual time=0.012..0.012 rows=1 loops=21)
+                          Cache Key: a.transferencia_id
+                          Cache Mode: logical
+                          Hits: 0  Misses: 21  Evictions: 0  Overflows: 0  Memory Usage: 5kB
+                          Buffers: shared hit=84
+                          ->  Index Scan using pk_transferencia on transferencia t  (cost=0.41..1.19 rows=1 width=88) (actual time=0.009..0.009 rows=1 loops=21)
+                                Index Cond: (id = a.transferencia_id)
+                                Buffers: shared hit=84
+              ->  Index Scan using pk_cuenta on cuenta co  (cost=0.28..0.89 rows=1 width=43) (actual time=0.005..0.005 rows=1 loops=21)
+                    Index Cond: (id = CASE WHEN (a.monto_centavos < 0) THEN t.cuenta_destino_id ELSE t.cuenta_origen_id END)
+                    Buffers: shared hit=63
+        ->  Index Scan using pk_beneficiario on beneficiario b  (cost=0.28..0.30 rows=1 width=29) (actual time=0.003..0.003 rows=1 loops=21)
+              Index Cond: (id = t.beneficiario_id)
+              Buffers: shared hit=63
+Planning:
+  Buffers: shared hit=22
+Planning Time: 0.791 ms
+Execution Time: 0.688 ms
+```
+
+#### Variante 4 · Rango de un mes: `desde = 2026-10-01`, `hasta = 2026-10-31`
+
+`Index Scan` sobre `ix_asiento_historial` con el rango como `Index Cond`. La conversión de §8.4 llega ya resuelta a instantes UTC: `2026-10-01 06:00:00+00` y `2026-11-01 06:00:00+00`, la medianoche local en UTC-6. Lee 21 filas, sin `Sort`. **0.592 ms.**
+
+```text
+Limit  (cost=1.39..102.83 rows=21 width=114) (actual time=0.056..0.544 rows=21 loops=1)
+  Buffers: shared hit=222
+  ->  Nested Loop Left Join  (cost=1.39..28627.09 rows=5926 width=114) (actual time=0.054..0.539 rows=21 loops=1)
+        Join Filter: (a.monto_centavos < 0)
+        Rows Removed by Join Filter: 6
+        Buffers: shared hit=222
+        ->  Nested Loop  (cost=1.11..26790.36 rows=5926 width=117) (actual time=0.048..0.474 rows=21 loops=1)
+              Buffers: shared hit=171
+              ->  Nested Loop  (cost=0.83..17847.47 rows=5926 width=122) (actual time=0.040..0.379 rows=21 loops=1)
+                    Buffers: shared hit=108
+                    ->  Index Scan using ix_asiento_historial on asiento a  (cost=0.42..6124.47 rows=5926 width=50) (actual time=0.027..0.104 rows=21 loops=1)
+                          Index Cond: ((cuenta_id = 'cc8dfc4e-d620-c605-1392-c5af66ee88c5'::uuid) AND (creado_en >= '2026-10-01 06:00:00+00'::timestamp with time zone) AND (creado_en < '2026-11-01 06:00:00+00'::timestamp with time zone))
+                          Buffers: shared hit=24
+                    ->  Index Scan using pk_transferencia on transferencia t  (cost=0.41..1.98 rows=1 width=88) (actual time=0.012..0.012 rows=1 loops=21)
+                          Index Cond: (id = a.transferencia_id)
+                          Buffers: shared hit=84
+              ->  Index Scan using pk_cuenta on cuenta co  (cost=0.28..1.51 rows=1 width=43) (actual time=0.004..0.004 rows=1 loops=21)
+                    Index Cond: (id = CASE WHEN (a.monto_centavos < 0) THEN t.cuenta_destino_id ELSE t.cuenta_origen_id END)
+                    Buffers: shared hit=63
+        ->  Index Scan using pk_beneficiario on beneficiario b  (cost=0.28..0.30 rows=1 width=29) (actual time=0.002..0.002 rows=1 loops=21)
+              Index Cond: (id = t.beneficiario_id)
+              Buffers: shared hit=51
+Planning:
+  Buffers: shared hit=25
+Planning Time: 1.068 ms
+Execution Time: 0.592 ms
+```
+
+#### Variante 5 · Referencia: la variante 1 con `SET enable_indexscan = off`
+
+Sin recorrido de índice: `Parallel Seq Scan` sobre `asiento`, que lee las 120,808 filas (17,000 por proceso pasan el filtro y 43,404 se descartan, en dos procesos) y 1,460 buffers. Después, un `Sort` de las 34,001 filas de la cuenta. **38.615 ms**, unas 25 a 65 veces más que las variantes 1 a 4, con 60 veces más buffers. La diferencia crece con el volumen; las variantes con índice no.
+
+```text
+Limit  (cost=4791.34..5055.75 rows=21 width=114) (actual time=34.035..38.161 rows=21 loops=1)
+  Buffers: shared hit=1695
+  ->  Nested Loop Left Join  (cost=4791.34..436469.11 rows=34285 width=114) (actual time=34.032..38.153 rows=21 loops=1)
+        Join Filter: (a.monto_centavos < 0)
+        Rows Removed by Join Filter: 6
+        Buffers: shared hit=1695
+        ->  Nested Loop  (cost=4791.05..288703.39 rows=34285 width=117) (actual time=34.017..38.049 rows=21 loops=1)
+              Buffers: shared hit=1656
+              ->  Nested Loop  (cost=4790.76..141386.63 rows=34285 width=122) (actual time=34.000..37.926 rows=21 loops=1)
+                    Buffers: shared hit=1593
+                    ->  Gather Merge  (cost=4790.29..8697.78 rows=34285 width=50) (actual time=32.946..36.682 rows=21 loops=1)
+                          Workers Planned: 1
+                          Workers Launched: 1
+                          Buffers: shared hit=1509
+                          ->  Sort  (cost=3790.28..3840.70 rows=20168 width=50) (actual time=19.017..19.098 rows=398 loops=2)
+                                Sort Key: a.creado_en DESC, a.id DESC
+                                Sort Method: quicksort  Memory: 2759kB
+                                Buffers: shared hit=1509
+                                Worker 0:  Sort Method: quicksort  Memory: 538kB
+                                ->  Parallel Seq Scan on asiento a  (cost=0.00..2348.29 rows=20168 width=50) (actual time=0.057..9.056 rows=17000 loops=2)
+                                      Filter: (cuenta_id = 'cc8dfc4e-d620-c605-1392-c5af66ee88c5'::uuid)
+                                      Rows Removed by Filter: 43404
+                                      Buffers: shared hit=1460
+                    ->  Memoize  (cost=0.47..4.48 rows=1 width=88) (actual time=0.058..0.058 rows=1 loops=21)
+                          Cache Key: a.transferencia_id
+                          Cache Mode: logical
+                          Hits: 0  Misses: 21  Evictions: 0  Overflows: 0  Memory Usage: 5kB
+                          Buffers: shared hit=84
+                          ->  Bitmap Heap Scan on transferencia t  (cost=0.46..4.47 rows=1 width=88) (actual time=0.008..0.008 rows=1 loops=21)
+                                Recheck Cond: (a.transferencia_id = id)
+                                Heap Blocks: exact=21
+                                Buffers: shared hit=84
+                                ->  Bitmap Index Scan on pk_transferencia  (cost=0.00..0.46 rows=1 width=0) (actual time=0.005..0.005 rows=1 loops=21)
+                                      Index Cond: (id = a.transferencia_id)
+                                      Buffers: shared hit=63
+              ->  Bitmap Heap Scan on cuenta co  (cost=0.29..4.31 rows=1 width=43) (actual time=0.004..0.004 rows=1 loops=21)
+                    Recheck Cond: (CASE WHEN (a.monto_centavos < 0) THEN t.cuenta_destino_id ELSE t.cuenta_origen_id END = id)
+                    Heap Blocks: exact=21
+                    Buffers: shared hit=63
+                    ->  Bitmap Index Scan on pk_cuenta  (cost=0.00..0.29 rows=1 width=0) (actual time=0.003..0.003 rows=1 loops=21)
+                          Index Cond: (id = CASE WHEN (a.monto_centavos < 0) THEN t.cuenta_destino_id ELSE t.cuenta_origen_id END)
+                          Buffers: shared hit=42
+        ->  Bitmap Heap Scan on beneficiario b  (cost=0.29..4.30 rows=1 width=29) (actual time=0.003..0.003 rows=1 loops=21)
+              Recheck Cond: (id = t.beneficiario_id)
+              Heap Blocks: exact=13
+              Buffers: shared hit=39
+              ->  Bitmap Index Scan on pk_beneficiario  (cost=0.00..0.29 rows=1 width=0) (actual time=0.002..0.002 rows=1 loops=21)
+                    Index Cond: (id = t.beneficiario_id)
+                    Buffers: shared hit=26
+Planning:
+  Buffers: shared hit=22
+Planning Time: 0.752 ms
+Execution Time: 38.615 ms
+```
 
 ---
 

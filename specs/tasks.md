@@ -101,7 +101,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 - [x] T-API-24 · `api` · P1 · Latencia de demostración y prueba de fugas en logs
 - [x] T-API-25 · `api` · P1 · Seed, fase 1: usuarios demo
 - [x] T-API-26 · `api` · P1 · Seed, fase 2: volumen
-- [ ] T-DOC-01 · `docs` · P1 · `EXPLAIN ANALYZE` en `design.md` §8.5
+- [x] T-DOC-01 · `docs` · P1 · `EXPLAIN ANALYZE` en `design.md` §8.5
 
 **Fase 5 · Web**
 
