@@ -1003,18 +1003,21 @@ CLABE de Fondeo: `999000000000000001`. Los primeros 17 dígitos `999000000000000
 
 ### 3.7 Seed
 
-`npm run db:seed` corre `api/src/scripts/seed.ts`. **Primero vacía** las tablas de datos con `TRUNCATE … CASCADE` como `billetera_owner`, conservando Fondeo, y después genera los datos con una semilla fija: dos corridas dan el mismo resultado.
+`npm run db:seed` corre `api/src/scripts/seed.ts`. **Primero vacía** las tablas de datos con `TRUNCATE … CASCADE` como `billetera_owner`, conservando Fondeo, y después genera los datos con una semilla fija: dos corridas dan el mismo resultado. "El mismo resultado" son los mismos correos, CLABEs, saldos por cuenta, beneficiarios y conteos por tabla. Los uuid que genera la base (`gen_random_uuid()`) pueden cambiar entre corridas.
+
+**Guarda.** Antes de tocar nada, el seed se niega a correr y termina con código distinto de 0 si `NODE_ENV=production`, o si `DATABASE_URL` o `DATABASE_URL_MIGRACIONES` apuntan a la base `billetera_test`: esa base es de las pruebas, y su `globalSetup` la reconstruye (§14.2). Toma la configuración con el mismo esquema de §2.4, más `DATABASE_URL_MIGRACIONES`.
 
 **Fase 1: usuarios demo, por los casos de uso reales.** Se crean llamando a `registrar`, `fondear` y `crearBeneficiario` de la API con el `DataSource` de `billetera_app`: el mismo camino, los mismos triggers y la misma auditoría que en producción.
 
-| Usuario | Saldo inicial (`Principal`) | Para demostrar en el video |
+| Usuario | Saldo final exacto de `Principal` después del seed | Para demostrar en el video |
 |---|---|---|
 | `ana@demo.mx` | `8000000` ($80,000.00) | Transferencia normal (≤ $10,000), con código (> $10,000) y, después de esas dos, límite diario excedido. Necesita saldo mayor que el límite (D-13) |
 | `beto@demo.mx` | `50000` ($500.00) | Saldo insuficiente |
 
 - Cada uno tiene registrado al otro como beneficiario, para que la app móvil pueda transferir desde el primer momento (R-4.26).
 - La contraseña demo cumple la política de §5 y va en el README.
-- Los saldos llegan por transferencias `FONDEO` (D-13, D-20, RNF-27). `FONDEO_BIENVENIDA_CENTAVOS` se suma por el mismo camino.
+- Los saldos llegan por transferencias `FONDEO` (D-13, D-20, RNF-27): un solo depósito por usuario, por el monto de la tabla. El seed arma `registrar` con un fondeo de bienvenida de 0, sea cual sea `FONDEO_BIENVENIDA_CENTAVOS`. Si no, con el valor de desarrollo (`1000000`), Beto tendría $10,500.00, y para mostrar el saldo insuficiente habría que transferir más que el umbral del código.
+- Las CLABEs demo son fijas: el seed inyecta en `registrar` un `generarClabe` determinista (`999180` + un número de cuenta fijo + dígito verificador), en lugar del aleatorio de DD-19. Así no cambian entre corridas y pueden ir en el README.
 
 **Fase 2: volumen, por SQL masivo.** Para el `EXPLAIN ANALYZE` (RNF-14):
 
