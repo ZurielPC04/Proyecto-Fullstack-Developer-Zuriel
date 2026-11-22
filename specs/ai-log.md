@@ -857,6 +857,17 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-WEB-03):** el de T-WEB-03.
 
+**Decisiones de implementación (T-WEB-04):**
+- Sin correcciones a los requerimientos.
+- `useMovimientos` con `useInfiniteQuery` y la llave `['movimientos', cuentaId, filtros]`: cambiar un filtro empieza otra lista desde la primera página. `getNextPageParam` devuelve `siguienteCursor`, y con `null` "Cargar más" desaparece.
+- Los filtros se validan con `esquemaQueryMovimientos` de `shared` antes de pedir nada. Así, "hasta antes de desde" muestra el mismo texto que daría la API, junto al campo "Hasta". Se aplican con un botón, para no pedir páginas con fechas a medio escribir.
+- Etiquetas de tipo en `ETIQUETA_TIPO`: `DEPOSITO` → "Depósito" (R-5.9), y además "Envío", "Recepción", "Traspaso enviado" y "Traspaso recibido". La contraparte muestra la etiqueta de la API y `···` con la terminación de la CLABE.
+- `formatearFecha` usa `Intl.DateTimeFormat('es-MX', { timeZone: ZONA_HORARIA })` con `ZONA_HORARIA` de `shared`. La prueba usa un instante de las 05:59 UTC del día 15, que debe mostrarse como el 14.
+- El título dice "Movimientos de <cuenta>", con el nombre tomado de `['cuentas']`.
+- Mutación: no pasar el cursor a la página siguiente → roja la prueba de paginación (la página 1 se repite y nunca aparece "Tres"); revertida con `sha256sum` idéntico.
+
+**Commits relacionados (T-WEB-04):** el de T-WEB-04.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
