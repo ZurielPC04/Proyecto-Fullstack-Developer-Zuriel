@@ -1700,8 +1700,8 @@ Definidos en D-11 y creados en la migración 3 (§3.5):
 
 | Índice | Sirve a |
 |---|---|
-| `ix_asiento_cuenta_creado (cuenta_id, creado_en DESC, id DESC)` | Historial sin filtro de tipo, con o sin rango de fechas, y estado de cuenta (§9) |
-| `ix_asiento_cuenta_tipo_creado (cuenta_id, tipo_movimiento, creado_en DESC, id DESC)` | Historial filtrado por tipo |
+| `ix_asiento_historial (cuenta_id, creado_en DESC, id DESC)` | Historial sin filtro de tipo, con o sin rango de fechas, y estado de cuenta (§9) |
+| `ix_asiento_historial_tipo (cuenta_id, tipo_movimiento, creado_en DESC, id DESC)` | Historial filtrado por tipo |
 | `uq_asiento_transferencia_cuenta (transferencia_id, cuenta_id)` | Verificación diferida de la transferencia (§3.3) |
 
 **Plan esperado:** un `Index Scan` sobre el índice que corresponde, con `cuenta_id` (y `tipo_movimiento`) como igualdad, y el rango de fechas y el cursor como condición del mismo índice. Sin `Sort`, y leyendo unas `limite + 1` filas. Esto es lo que verifica §8.5.
@@ -1768,10 +1768,10 @@ AND a.creado_en < (($4::date) + 1)::timestamp AT TIME ZONE 'America/Mexico_City'
 
 | # | Variante | Índice esperado | Resultado |
 |---|---|---|---|
-| 1 | Primera página, sin filtros, `limite = 20` | `ix_asiento_cuenta_creado` | ⏳ |
-| 2 | Página profunda, con un cursor a unos 25,000 movimientos del inicio | `ix_asiento_cuenta_creado`, con el cursor como `Index Cond` | ⏳ |
-| 3 | Filtro `tipo = ENVIO`, primera página | `ix_asiento_cuenta_tipo_creado` | ⏳ |
-| 4 | Rango de un mes con `desde` y `hasta` | `ix_asiento_cuenta_creado`, con el rango como `Index Cond` | ⏳ |
+| 1 | Primera página, sin filtros, `limite = 20` | `ix_asiento_historial` | ⏳ |
+| 2 | Página profunda, con un cursor a unos 25,000 movimientos del inicio | `ix_asiento_historial`, con el cursor como `Index Cond` | ⏳ |
+| 3 | Filtro `tipo = ENVIO`, primera página | `ix_asiento_historial_tipo` | ⏳ |
+| 4 | Rango de un mes con `desde` y `hasta` | `ix_asiento_historial`, con el rango como `Index Cond` | ⏳ |
 | 5 | Referencia: la variante 1 con `SET enable_indexscan = off` | `Seq Scan` o `Bitmap Heap Scan`, más `Sort` | ⏳ |
 
 **Criterios de aceptación** para las variantes 1 a 4:
