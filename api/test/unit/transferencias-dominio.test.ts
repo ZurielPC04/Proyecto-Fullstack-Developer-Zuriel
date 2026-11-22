@@ -20,7 +20,58 @@ describe('transferencias.dominio · clasificar', () => {
 });
 
 describe('transferencias.dominio · decidir', () => {
-  const base = { tipo: 'TERCERO' as const, montoCentavos: 100, saldoOrigenCentavos: 100 };
+  const base = {
+    tipo: 'TERCERO' as const,
+    montoCentavos: 100,
+    saldoOrigenCentavos: 100,
+    consumidoCentavos: 0,
+    limiteCentavos: 5_000_000,
+  };
+
+  it('R-6.1 consumido + monto igual al límite se aplica', () => {
+    expect(
+      decidir({
+        ...base,
+        montoCentavos: 1_000_000,
+        saldoOrigenCentavos: 9_000_000,
+        consumidoCentavos: 4_000_000,
+      }),
+    ).toEqual({ estado: 'APLICADA' });
+  });
+
+  it('R-6.2 un centavo sobre el límite se rechaza por LIMITE_DIARIO_EXCEDIDO', () => {
+    expect(
+      decidir({
+        ...base,
+        montoCentavos: 1_000_001,
+        saldoOrigenCentavos: 9_000_000,
+        consumidoCentavos: 4_000_000,
+      }),
+    ).toEqual({ estado: 'RECHAZADA', motivo: 'LIMITE_DIARIO_EXCEDIDO' });
+  });
+
+  it('R-6.3 R-4.5 un traspaso no se evalúa contra el límite', () => {
+    expect(
+      decidir({
+        ...base,
+        tipo: 'TRASPASO',
+        montoCentavos: 9_000_000,
+        saldoOrigenCentavos: 9_000_000,
+        consumidoCentavos: 5_000_000,
+      }),
+    ).toEqual({ estado: 'APLICADA' });
+  });
+
+  it('DD-31 si fallan saldo y límite a la vez, el motivo es SALDO_INSUFICIENTE', () => {
+    expect(
+      decidir({
+        ...base,
+        montoCentavos: 2_000_000,
+        saldoOrigenCentavos: 10,
+        consumidoCentavos: 4_000_000,
+      }),
+    ).toEqual({ estado: 'RECHAZADA', motivo: 'SALDO_INSUFICIENTE' });
+  });
 
   it('R-4.1 con saldo exacto se aplica', () => {
     expect(decidir(base)).toEqual({ estado: 'APLICADA' });

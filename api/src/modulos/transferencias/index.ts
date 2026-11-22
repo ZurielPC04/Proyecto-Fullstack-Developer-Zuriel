@@ -13,6 +13,7 @@ export function crearModuloTransferencias(dependencias: DependenciasApp): Router
     conTransaccion: crearConTransaccion({ dataSource, logger }),
     reloj,
     logger,
+    limiteCentavos: config.LIMITE_DIARIO_CENTAVOS,
   });
   return rutasTransferencias(crearControladorTransferencias(casos), crearAutenticar(config));
 }

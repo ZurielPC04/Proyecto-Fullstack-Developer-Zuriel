@@ -4,6 +4,7 @@ import type { ConTransaccion } from '../../plataforma/db/unidad-de-trabajo.js';
 import { LlaveReutilizada, MismaCuenta, NoEncontrado } from '../../plataforma/http/errores.js';
 import type { Reloj } from '../../plataforma/reloj/index.js';
 import { registrarEvento } from '../auditoria/auditoria.casos-uso.js';
+import { consumidoDelDia } from '../limites/limites.repositorio.js';
 import {
   clasificar,
   decidir,
@@ -126,6 +127,8 @@ export interface DependenciasCasosUsoTransferencias {
   conTransaccion: ConTransaccion;
   reloj: Reloj;
   logger: Logger;
+  /** LIMITE_DIARIO_CENTAVOS (D-13). */
+  limiteCentavos: number;
 }
 
 /** HU-4: crear y consultar transferencias del `usuarioId` autenticado (§6.1). */
@@ -133,6 +136,7 @@ export function crearCasosUsoTransferencias({
   conTransaccion,
   reloj,
   logger,
+  limiteCentavos,
 }: DependenciasCasosUsoTransferencias) {
   /** §6.1 paso 3: la transacción de escritura, con el orden de bloqueo de D-12. */
   async function escribir(
@@ -151,10 +155,14 @@ export function crearCasosUsoTransferencias({
     if (enEspera) return repeticion(enEspera, hash);
     const saldos = await bloquearCuentas(tx, [cuentaOrigenId, destino.cuentaDestinoId]); // 3.3 (D-12)
     const ahora = await reloj.ahora(tx); // 3.4, después de los bloqueos (DD-36)
+    // 3.6: lo consumido solo importa a un TERCERO; con el usuario bloqueado no cambia (R-4.18).
+    const consumido = destino.tipo === 'TERCERO' ? await consumidoDelDia(tx, usuarioId, ahora) : 0;
     const decision = decidir({
       tipo: destino.tipo,
       montoCentavos,
       saldoOrigenCentavos: saldos.get(cuentaOrigenId) ?? 0,
+      consumidoCentavos: consumido,
+      limiteCentavos,
     });
     const transferenciaId = await insertarTransferencia(tx, {
       usuarioId,

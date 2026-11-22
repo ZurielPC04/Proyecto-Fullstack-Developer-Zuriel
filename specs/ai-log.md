@@ -648,7 +648,22 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - La normalización del hash se prueba de punta a punta: espacios, `e` + acento combinado frente a `é`, y uuid y llave en mayúsculas dan la misma transferencia.
 - Mutación (c), no comparar el hash: roja; la misma llave con 301 en vez de 300 respondió `201` (la repetición) en lugar de `422`.
 
-**Commits relacionados (T-API-18):** el de T-API-18.
+**Commits relacionados (T-API-18):** `aa5ab9d`.
+
+**Correcciones a los requerimientos (T-API-19):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| `tasks.md`, verificación de T-API-19: "los cuatro escenarios de medianoche de §6.4" | El cuarto (pendiente creada a las 23:58 y confirmada a las 00:01) necesita la pendiente y la confirmación, que son de T-API-20 | Ese escenario pasa a la verificación de T-API-20 (con `R-6.6` en su filtro); T-API-19 verifica los otros tres |
+
+**Decisiones de implementación (T-API-19):**
+- Módulo `limites` (§2.1): `consumidoDelDia` con el SQL de §6.4, la zona como parámetro desde `ZONA_HORARIA` de `shared`, y `ventanaDelDia` para `dia` y `reiniciaEn`, calculados en la base con la misma aritmética local. `transferencias` usa `consumidoDelDia` dentro de su transacción, después de bloquear y leer `ahora` (DD-36), y solo para un `TERCERO`.
+- `decidir` aplica el orden de DD-31: saldo y después límite (`consumido + monto > límite` rechaza; igual al límite se aplica).
+- Pruebas con `RelojFijo` en fechas de diciembre de 2026 (UTC-6 sin horario de verano). Los envíos de las pruebas son de `1000000`, el umbral exacto, para que en T-API-20 sigan sin pedir código.
+- Además de los escenarios de §6.4, una prueba aplica una transferencia exactamente a las 00:00:00 y comprueba con `GET /limites` que cuenta para el día nuevo y no para el anterior.
+- Mutaciones, las dos rojas: (d) `<` → `<=` en el borde superior, y la transferencia de las 00:00:00 contó para el día anterior (1000000 en vez de 300000); (e) la ventana en `UTC`, y fallaron los dos escenarios de medianoche.
+
+**Commits relacionados (T-API-19):** `3fdf070` (escenario de la pendiente a T-API-20) y el de T-API-19.
 
 ---
 

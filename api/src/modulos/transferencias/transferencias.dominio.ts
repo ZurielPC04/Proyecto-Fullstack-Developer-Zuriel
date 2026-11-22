@@ -15,6 +15,9 @@ export interface EntradaDecision {
   tipo: TipoTransferencia;
   montoCentavos: number;
   saldoOrigenCentavos: number;
+  /** Envíos a tercero aplicados hoy (§6.4); solo cuenta para un TERCERO. */
+  consumidoCentavos: number;
+  limiteCentavos: number;
 }
 
 export type Decision = { estado: 'APLICADA' } | { estado: 'RECHAZADA'; motivo: MotivoRechazo };
@@ -23,6 +26,13 @@ export type Decision = { estado: 'APLICADA' } | { estado: 'RECHAZADA'; motivo: M
 export function decidir(entrada: EntradaDecision): Decision {
   if (entrada.saldoOrigenCentavos < entrada.montoCentavos) {
     return { estado: 'RECHAZADA', motivo: 'SALDO_INSUFICIENTE' };
+  }
+  // R-6.1: llegar exactamente al límite está permitido; los traspasos no cuentan (R-6.3).
+  if (
+    entrada.tipo === 'TERCERO' &&
+    entrada.consumidoCentavos + entrada.montoCentavos > entrada.limiteCentavos
+  ) {
+    return { estado: 'RECHAZADA', motivo: 'LIMITE_DIARIO_EXCEDIDO' };
   }
   return { estado: 'APLICADA' };
 }
