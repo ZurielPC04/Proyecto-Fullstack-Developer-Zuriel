@@ -6,6 +6,7 @@ import { Campo } from '../componentes/Campo';
 import { ErrorConReintento } from '../componentes/ErrorConReintento';
 import { useAltaBeneficiario, useBeneficiarios } from '../consultas/beneficiarios';
 import { aplicarErrorDelServidor } from '../formularios/errores-servidor';
+import { Titulo } from '../componentes/Titulo';
 
 /** Ruta `/beneficiarios` (design.md §13.2): lista y formulario de alta (R-3.1, R-3.10). */
 export function Beneficiarios() {
@@ -13,7 +14,7 @@ export function Beneficiarios() {
 
   return (
     <>
-      <h1>Beneficiarios</h1>
+      <Titulo>Beneficiarios</Titulo>
       <section aria-labelledby="titulo-lista">
         <h2 id="titulo-lista">Tus beneficiarios</h2>
         {beneficiarios.isPending ? (

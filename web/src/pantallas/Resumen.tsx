@@ -2,6 +2,7 @@ import { formatearMXN, type Cuenta, type Limites } from '@billetera/shared';
 import { Link } from 'react-router';
 import { ErrorConReintento } from '../componentes/ErrorConReintento';
 import { useCuentas, useLimites } from '../consultas/cuentas';
+import { Titulo } from '../componentes/Titulo';
 
 /** Ruta `/` (design.md §13.2): cuentas con su saldo y el límite del día (R-2.1, R-2.6, R-6.7). */
 export function Resumen() {
@@ -10,7 +11,7 @@ export function Resumen() {
 
   return (
     <>
-      <h1>Resumen</h1>
+      <Titulo>Resumen</Titulo>
       {cuentas.isPending || limites.isPending ? (
         <Cargando />
       ) : cuentas.isError || limites.isError ? (

@@ -11,6 +11,7 @@ import { ErrorConReintento } from '../componentes/ErrorConReintento';
 import { useCuentas } from '../consultas/cuentas';
 import { useMovimientos, type FiltrosMovimientos } from '../consultas/movimientos';
 import { formatearFecha } from '../formato/fecha';
+import { Titulo } from '../componentes/Titulo';
 
 /** R-5.9: una entrada desde Fondeo es "Depósito", nunca una transferencia. */
 export const ETIQUETA_TIPO: Record<TipoMovimiento, string> = {
@@ -34,7 +35,7 @@ export function Historial() {
 
   return (
     <>
-      <h1>{cuenta ? `Movimientos de ${cuenta.nombre}` : 'Movimientos'}</h1>
+      <Titulo>{cuenta ? `Movimientos de ${cuenta.nombre}` : 'Movimientos'}</Titulo>
       <Filtros alAplicar={setFiltros} />
       {movimientos.isPending ? (
         <div role="status" aria-live="polite">

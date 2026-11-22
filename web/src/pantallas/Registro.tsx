@@ -6,6 +6,7 @@ import { Link, useNavigate } from 'react-router';
 import { api } from '../api/cliente';
 import { Campo } from '../componentes/Campo';
 import { aplicarErrorDelServidor } from '../formularios/errores-servidor';
+import { Titulo } from '../componentes/Titulo';
 
 export function Registro() {
   const navegar = useNavigate();
@@ -38,7 +39,7 @@ export function Registro() {
 
   return (
     <>
-      <h1>Crear cuenta</h1>
+      <Titulo>Crear cuenta</Titulo>
       <form onSubmit={enviar} noValidate>
         <Campo
           id="registro-correo"

@@ -112,6 +112,32 @@ a {
   border-color: var(--color-error);
 }
 
+/* Grupo de radios (origen y destino de la transferencia). */
+fieldset.opciones {
+  border: 1px solid var(--color-borde);
+  border-radius: 0.25rem;
+  padding: 0.5rem 1rem;
+}
+
+.opcion {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* El h1 recibe el foco por código al cambiar de pantalla o de fase (RNF-19). */
+h1:focus-visible {
+  outline-offset: 4px;
+}
+
+/* DD-25: el código simulado se distingue como "Modo de prueba"; texto con el token de 16.1:1. */
+.aviso {
+  padding: 0.5rem 1rem;
+  border: 1px dashed var(--color-borde);
+  border-radius: 0.25rem;
+  background: var(--color-superficie);
+}
+
 button {
   padding: 0.5rem 1rem;
   border: 1px solid var(--color-primario);

@@ -6,6 +6,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { iniciarSesion } from '../auth/sesion';
 import { Campo } from '../componentes/Campo';
 import { aplicarErrorDelServidor } from '../formularios/errores-servidor';
+import { Titulo } from '../componentes/Titulo';
 
 // DD-24: el cliente lo agrega la web al enviar; el usuario solo captura correo y contraseña.
 const esquema = esquemaLogin.omit({ cliente: true });
@@ -33,7 +34,7 @@ export function Login() {
 
   return (
     <>
-      <h1>Iniciar sesión</h1>
+      <Titulo>Iniciar sesión</Titulo>
       {aviso ? <p role="status">{aviso}</p> : null}
       <form onSubmit={enviar} noValidate>
         <Campo

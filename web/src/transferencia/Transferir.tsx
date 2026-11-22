@@ -24,6 +24,7 @@ import {
 import { FormularioTransferencia, type DatosCongelados } from './FormularioTransferencia';
 import type { ValoresFormulario } from './formulario';
 import { PantallaCodigo } from './PantallaCodigo';
+import { Titulo } from '../componentes/Titulo';
 
 /** Un intento: la llave nace al pasar a la confirmación y muere al volver a editar (R-4.20, R-4.24). */
 type Intento = { llave: string; datos: DatosCongelados; valores: ValoresFormulario };
@@ -286,7 +287,7 @@ export function Transferir() {
     case 'verificandoAnterior':
       return (
         <>
-          <h1>Verificando operación anterior</h1>
+          <Titulo>Verificando operación anterior</Titulo>
           <p role="status" aria-live="polite">
             Verificando operación anterior…
           </p>
@@ -296,7 +297,7 @@ export function Transferir() {
     case 'errorVerificacion':
       return (
         <>
-          <h1>Verificando tu transferencia</h1>
+          <Titulo>Verificando tu transferencia</Titulo>
           <div role="status" aria-live="polite">
             {estado.fase === 'verificandoEstado' ? (
               <p>Verificando el estado de tu transferencia…</p>
@@ -322,7 +323,7 @@ export function Transferir() {
     case 'rechazado':
       return (
         <>
-          <h1>Transferencia rechazada</h1>
+          <Titulo>Transferencia rechazada</Titulo>
           <p role="alert" className="error">
             {estado.mensaje}
           </p>
@@ -349,7 +350,7 @@ function Captura({
 
   return (
     <>
-      <h1>Transferir</h1>
+      <Titulo>Transferir</Titulo>
       {error ? (
         <ErrorConReintento
           titulo="No pudimos cargar tus cuentas y beneficiarios."
@@ -392,10 +393,17 @@ function Confirmacion({
   alEditar: () => void;
 }) {
   const enviando = estado.fase === 'enviando';
+  const errorReintentable = estado.fase === 'errorReintentable';
+  // RNF-19: el botón deshabilitado durante el envío pierde el foco; tras el error, "Reintentar"
+  // lo recupera para seguir solo con el teclado.
+  const boton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (errorReintentable) boton.current?.focus();
+  }, [errorReintentable]);
   const { solicitud, origen, destino } = estado.datos;
   return (
     <>
-      <h1>Confirma la transferencia</h1>
+      <Titulo>Confirma la transferencia</Titulo>
       <dl>
         <dt>Desde</dt>
         <dd>{origen}</dd>
@@ -415,7 +423,7 @@ function Confirmacion({
       ) : null}
       {/* R-4.21: clic y Enter pasan por el mismo onSubmit. */}
       <form onSubmit={alEnviar} aria-label="Confirmación">
-        <button type="submit" disabled={enviando} aria-busy={enviando}>
+        <button ref={boton} type="submit" disabled={enviando} aria-busy={enviando}>
           {estado.fase === 'errorReintentable' ? 'Reintentar' : 'Enviar'}
         </button>
         {/* Tras un resultado incierto ya no se edita: la petición pudo haber llegado. */}
@@ -444,7 +452,7 @@ function VistaComprobante({
 }) {
   return (
     <section aria-labelledby="titulo-comprobante">
-      <h1 id="titulo-comprobante">Transferencia aplicada</h1>
+      <Titulo id="titulo-comprobante">Transferencia aplicada</Titulo>
       <dl>
         <dt>Folio</dt>
         <dd>{comprobante.transferenciaId}</dd>

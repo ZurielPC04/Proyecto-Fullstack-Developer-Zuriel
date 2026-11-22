@@ -919,6 +919,28 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-WEB-07):** el de T-WEB-07.
 
+**Decisiones de implementación (T-WEB-09):**
+- Sin correcciones a los requerimientos.
+- `Titulo` reemplaza el `h1` de todas las pantallas y fases. Lleva `tabIndex={-1}` y recibe el foco al montarse, así que el foco llega al encabezado nuevo al cambiar de ruta o de fase (§13.2). Las fases que comparten pantalla (`Confirmando`/`Enviando`/`ErrorReintentable` y las tres del código) conservan su `h1`, y ahí el foco va a donde sigue el usuario:
+  - al campo con error, con `aria-invalid` y `aria-describedby` (código incorrecto);
+  - a "Reintentar", porque el botón deshabilitado durante la petición pierde el foco y, sin esto, quien usa teclado quedaba en el `body`.
+- **Error propio encontrado por la prueba de teclado:** un grupo de radios sin elegir le llega a Zod como `null`, y el destino mostraba "Entrada inválida: se esperaba texto, recibido nulo". El esquema del formulario usa ahora el mensaje propio también para el error de tipo ("Elige el destino.").
+- Estilos para los grupos de radios, el aviso "Modo de prueba" y el contorno del `h1` enfocado, con los tokens AA que ya existían.
+- `axe` corre en cada fase de la transferencia: edición con errores, confirmación, envío en vuelo, error reintentable, rechazo, captura del código con y sin error, error de confirmación, verificación de la operación anterior, error de verificación y comprobante. Login, registro, resumen, historial y beneficiarios ya lo tenían desde T-WEB-02 a T-WEB-05.
+- La prueba de teclado recorre la transferencia con código solo con `user-event` (`tab`, Espacio, escritura y Enter):
+  - el foco empieza en el `h1`;
+  - Tab recorre origen, destino y monto;
+  - Enter sin datos deja el foco en el primer campo con error, con `aria-invalid` y su descripción;
+  - Espacio elige el destino, y Tab y la escritura llenan el resto;
+  - después vienen confirmación, código, comprobante y "Nueva transferencia", con el foco en el `h1` de cada fase.
+  Es la "revisión manual con teclado" de la tarea, automatizada; la revisión en un navegador real queda pendiente para el usuario.
+- **Prueba intermitente corregida:** "R-5.11 muestra el estado cargando con el nombre de la cuenta" (T-WEB-04) falló una vez en la corrida completa. Usaba un `delay(50)` fijo, y con más archivos en paralelo `/cuentas` llegaba después de los movimientos. Ahora la página sigue en vuelo hasta que la prueba la suelta con una `puerta`. A la prueba de teclado se le dio un límite de 15 s, porque recorre el flujo tecla por tecla.
+- Mutaciones, cada una revertida con `sha256sum` idéntico al original:
+  - quitar el foco al `h1` en `Titulo` → rojas las 5 pruebas de accesibilidad, incluida la de teclado (`toHaveFocus`);
+  - quitar `aria-invalid` en `Campo` → rojas la de teclado (Monto con error) y la de la captura del código con error.
+
+**Commits relacionados (T-WEB-09):** el de T-WEB-09.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

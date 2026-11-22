@@ -36,8 +36,11 @@ function decodificarDestino(valor: string): Destino | null {
  */
 export const esquemaFormulario = z
   .object({
-    cuentaOrigenId: z.string().min(1, 'Elige la cuenta de origen.'),
-    destino: z.string().min(1, 'Elige el destino.'),
+    // Un grupo de radios sin elegir llega como null: el mensaje de tipo también es el propio.
+    cuentaOrigenId: z
+      .string({ error: 'Elige la cuenta de origen.' })
+      .min(1, 'Elige la cuenta de origen.'),
+    destino: z.string({ error: 'Elige el destino.' }).min(1, 'Elige el destino.'),
     monto: z.string().transform((texto, ctx) => {
       const resultado = montoTextoACentavos(texto);
       if (!resultado.ok) {

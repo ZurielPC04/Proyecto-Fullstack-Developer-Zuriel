@@ -1,8 +1,9 @@
 import { esquemaConfirmacion, formatearMXN } from '@billetera/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
+import { useEffect, useRef, type FormEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { Campo } from '../componentes/Campo';
+import { Titulo } from '../componentes/Titulo';
 import { formatearFecha } from '../formato/fecha';
 
 type Props = {
@@ -49,8 +50,14 @@ export function PantallaCodigo({
   }, [errorCodigo, setFocus]);
 
   const reintentar = errorConfirmacion !== null;
+  // RNF-19: "Confirmar" deshabilitado pierde el foco; tras el error, "Reintentar" lo recupera.
+  const boton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (reintentar) boton.current?.focus();
+  }, [reintentar]);
+
   const enviar = reintentar
-    ? (evento: React.FormEvent<HTMLFormElement>) => {
+    ? (evento: FormEvent<HTMLFormElement>) => {
         evento.preventDefault();
         alConfirmar('');
       }
@@ -58,7 +65,7 @@ export function PantallaCodigo({
 
   return (
     <>
-      <h1>Código de confirmación</h1>
+      <Titulo>Código de confirmación</Titulo>
       <p>
         Para enviar {formatearMXN(montoCentavos)} a {destino}, escribe el código de 6 dígitos que te
         enviamos. Vence el {formatearFecha(codigoExpiraEn)}.
@@ -85,7 +92,7 @@ export function PantallaCodigo({
             {errorConfirmacion} Puedes reintentar con el mismo código.
           </p>
         ) : null}
-        <button type="submit" disabled={ocupado} aria-busy={ocupado}>
+        <button ref={boton} type="submit" disabled={ocupado} aria-busy={ocupado}>
           {reintentar ? 'Reintentar' : 'Confirmar'}
         </button>
       </form>

@@ -1,10 +1,10 @@
 import type { Movimiento, PaginaMovimientos } from '@billetera/shared';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { delay, http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { axe } from 'vitest-axe';
-import { conCuentas, conSesion, ID_PRINCIPAL } from './api-falsa';
+import { conCuentas, conSesion, ID_PRINCIPAL, puerta } from './api-falsa';
 import { problema, servidor } from './servidor';
 import { renderizarApp } from './utilidades';
 
@@ -55,9 +55,12 @@ describe('historial de movimientos (ruta /cuentas/:cuentaId)', () => {
   it('R-5.11 muestra el estado cargando con el nombre de la cuenta', async () => {
     conSesion();
     conCuentas();
+    // La página sigue en vuelo hasta que la prueba la suelta (antes, un delay fijo podía
+    // terminar antes que /cuentas en una máquina cargada).
+    const pagina = puerta();
     servidor.use(
       http.get(URL_MOVIMIENTOS, async () => {
-        await delay(50);
+        await pagina.abierta;
         return HttpResponse.json({ items: [], siguienteCursor: null });
       }),
     );
@@ -68,6 +71,7 @@ describe('historial de movimientos (ruta /cuentas/:cuentaId)', () => {
       await screen.findByRole('heading', { level: 1, name: 'Movimientos de Principal' }),
     ).toBeVisible();
     expect(screen.getByText('Cargando movimientos…')).toBeInTheDocument();
+    pagina.abrir();
     expect(await screen.findByText('Sin movimientos')).toBeVisible();
   });
 
