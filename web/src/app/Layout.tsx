@@ -23,6 +23,9 @@ export function Layout() {
                     Resumen
                   </NavLink>
                 </li>
+                <li>
+                  <NavLink to="/beneficiarios">Beneficiarios</NavLink>
+                </li>
               </ul>
             </nav>
             <button

@@ -868,6 +868,16 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-WEB-04):** el de T-WEB-04.
 
+**Decisiones de implementación (T-WEB-05):**
+- Sin correcciones a los requerimientos.
+- El formulario usa React Hook Form con `zodResolver(esquemaBeneficiario)` (DD-03). La CLABE se valida con `validarClabe` de `shared`, la misma función de la API (R-3.10, RNF-18). `setValueAs` quita los espacios de la CLABE antes de validar (§13.1), y el cuerpo que se envía es la salida del esquema: nombre y alias recortados y en NFC.
+- El alta usa `useMutation`, sin reintentos (§13.2; solo la transferencia prescinde de `useMutation`). Al terminar invalida `['beneficiarios']` y la lista se vuelve a pedir al servidor.
+- Errores del alta: el `409` va al campo que indica `errores[0].campo` (`body.clabe` o `body.alias`), con el mensaje del servidor; el `422 clabe-not-found` va a la CLABE con `mensajeDeProblema`; el `429` va como alerta del formulario. El foco pasa al campo con error.
+- La lista marca "Cuenta propia: enviarle es un traspaso" cuando `esCuentaPropia` (R-3.8, DD-26). El enlace "Beneficiarios" se sumó a la navegación.
+- Mutación: no pasar los campos a `aplicarErrorDelServidor` → rojas las dos pruebas del `409` (`body.clabe` y `body.alias`), porque el mensaje queda solo como alerta del formulario; revertida con `sha256sum` idéntico.
+
+**Commits relacionados (T-WEB-05):** el de T-WEB-05.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

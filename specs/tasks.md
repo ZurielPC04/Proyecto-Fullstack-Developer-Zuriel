@@ -109,7 +109,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 - [x] T-WEB-02 · `web` · P1 · Cliente tipado, sesión, login y registro
 - [x] T-WEB-03 · `web` · P1 · Resumen de cuentas y límite
 - [x] T-WEB-04 · `web` · P1 · Historial
-- [ ] T-WEB-05 · `web` · P1 · Beneficiarios
+- [x] T-WEB-05 · `web` · P1 · Beneficiarios
 - [ ] T-WEB-06 · `web` · P1 · Transferencia: máquina del intento
 - [ ] T-WEB-07 · `web` · P1 · Código, reanudación y verificación del estado
 - [ ] T-WEB-09 · `web` · P1 · Pase de accesibilidad
