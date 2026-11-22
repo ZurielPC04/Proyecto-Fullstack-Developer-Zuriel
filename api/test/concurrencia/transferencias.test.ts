@@ -3,6 +3,7 @@
 // SUM(saldos) = 0, transferencias coherentes) las verifica el afterEach global.
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
+import request from 'supertest';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { appReal, type AppReal } from '../integracion/apoyo/app-real.js';
@@ -12,8 +13,10 @@ import {
   fondear,
   type UsuarioDePrueba,
 } from '../integracion/apoyo/fabricas.js';
+import { consultarComoDueno } from '../integracion/apoyo/migraciones.js';
 import {
   altaBeneficiario,
+  autorizacion,
   cuerpo,
   saldo,
   transferenciasDe,
@@ -156,8 +159,59 @@ describe('T-API-21 · concurrencia (§14.3)', () => {
     expect(await saldo(receptor.principalId)).toBe(12_345);
   });
 
-  // Se activa al cerrar T-API-22, cuando exista el historial con cursor (tasks.md).
-  it.todo(
-    'R-5.4 DD-36 transferencias concurrentes hacia una cuenta mientras se recorre su historial: sin huecos ni repetidos',
-  );
+  it('R-5.4 DD-36 transferencias concurrentes hacia una cuenta mientras se recorre su historial: sin huecos ni repetidos', async () => {
+    const receptor = await crearUsuarioConCuentas(dataSource);
+    for (let i = 0; i < 60; i++) await fondear(dataSource, receptor.principalId, 100 + i);
+    const previos = (
+      await consultarComoDueno<{ id: number }>('SELECT id FROM asiento WHERE cuenta_id = $1', [
+        receptor.principalId,
+      ])
+    ).map((fila) => String(fila.id));
+    expect(previos).toHaveLength(60);
+
+    const emisores = await Promise.all(Array.from({ length: 5 }, () => usuarioConSaldo(1_000_000)));
+    const envios = await Promise.all(
+      emisores.map(async (emisor) => {
+        const beneficiarioId = await altaBeneficiario(
+          servidor,
+          emisor.usuarioId,
+          receptor.principalId,
+        );
+        return cuerpo(emisor.principalId, { tipo: 'BENEFICIARIO', beneficiarioId }, 1_000);
+      }),
+    );
+    const token = await autorizacion(receptor.usuarioId);
+
+    /** Recorre el historial página por página mientras entran transferencias. */
+    async function recorrer(): Promise<string[]> {
+      const vistos: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const respuesta = await request(servidor)
+          .get(`/api/cuentas/${receptor.principalId}/movimientos`)
+          .query({ limite: 7, ...(cursor === null ? {} : { cursor }) })
+          .set('Authorization', token);
+        expect(respuesta.status).toBe(200);
+        const pagina = respuesta.body as {
+          items: { id: string }[];
+          siguienteCursor: string | null;
+        };
+        vistos.push(...pagina.items.map((m) => m.id));
+        cursor = pagina.siguienteCursor;
+      } while (cursor !== null);
+      return vistos;
+    }
+
+    const [vistos, ...respuestas] = await Promise.all([
+      recorrer(),
+      ...Array.from({ length: 30 }, (_, i) =>
+        transferir(servidor, emisores[i % 5]?.usuarioId ?? '', envios[i % 5] ?? {}),
+      ),
+    ]);
+
+    expect(respuestas.map((r) => r.status)).toEqual(Array(30).fill(201));
+    expect(new Set(vistos).size).toBe(vistos.length);
+    for (const id of previos) expect(vistos.filter((v) => v === id)).toHaveLength(1);
+    expect(await saldo(receptor.principalId)).toBe(60 * 100 + (59 * 60) / 2 + 30 * 1_000);
+  });
 });

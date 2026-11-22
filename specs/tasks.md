@@ -97,7 +97,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 - [x] T-API-19 · `api` · P1 · Límite diario y medianoche
 - [x] T-API-20 · `api` · P1 · Código de un solo uso
 - [x] T-API-21 · `api` · P1 · Pruebas de concurrencia
-- [ ] T-API-22 · `api` · P1 · Historial de movimientos
+- [x] T-API-22 · `api` · P1 · Historial de movimientos
 - [ ] T-API-24 · `api` · P1 · Latencia de demostración y prueba de fugas en logs
 - [ ] T-API-25 · `api` · P1 · Seed, fase 1: usuarios demo
 - [ ] T-API-26 · `api` · P1 · Seed, fase 2: volumen

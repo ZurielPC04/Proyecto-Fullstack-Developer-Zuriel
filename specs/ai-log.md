@@ -636,7 +636,6 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - El hash de la petición ya se guarda (la columna lo exige para toda transferencia de usuario); su comparación es de T-API-18.
 - La prueba de DD-36 retiene la cuenta destino con `FOR UPDATE` desde otra conexión, lanza la transferencia, lee `clock_timestamp()` justo antes de liberar y exige `aplicadaEn` mayor que esa hora, con los asientos en el mismo instante.
 - Mutaciones, las dos rojas en la prueba de DD-36: (a) sin `FOR UPDATE` en las cuentas; (b) leer el instante antes de bloquear las cuentas. Se aplicaron y revirtieron con la herramienta de edición, y el hash se verificó con `sha256sum` en un comando aparte.
-- **Abortos intermitentes de la integración en Windows:** varias corridas completas con `forks` terminaron con un worker en `0xC0000409` ("during started state"), cada vez en un archivo distinto (`data-source`, `entidades`, `sesion`, `registro`, `integridad`, `invariantes`), sin mensaje en stderr y sin informe de diagnóstico de Node. Con `HEAD` limpio pasó dos veces; con `--pool=threads` pasó dos veces; después, `forks` con el mismo código también pasó dos veces, incluida la corrida oficial. La bisección hecha mientras fallaba (router vacío o sin montar) resultó no concluyente: la causa no está en el código de la tarea. Hipótesis sin confirmar: el orden de los archivos (Vitest corre primero los que fallaron antes) o el entorno de Windows. No se cambió la configuración.
 
 **Commits relacionados (T-API-17):** `93685cb` (H1) y `830bf7d`.
 
@@ -693,6 +692,28 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
   - (k) sin bloqueo de usuario ni de cuentas: roja en la de 100 (201 + 422 = 92: ocho `500` por el `CHECK` de saldo, la última red de la base); las demás se agotaron por tiempo.
 
 **Commits relacionados (T-API-21):** `5659c7c` (H2) y el de T-API-21.
+
+### Sesión 22 — 2026-11-21 · Implementación de T-API-22, T-API-24, T-API-25, T-API-26 y T-DOC-01 (historial, logs, seed y `EXPLAIN ANALYZE`)
+
+**Herramienta:** Claude Code (Opus 5.5) con la skill `tdd`. Claude Code leyó §2.2, §3.7, §8.1 a §8.5, §10.1, §10.2, D-11, D-13, D-17, DD-20, DD-36, DD-37, DD-39, DD-40 y el contrato de movimientos, y propuso un solo plan para las cinco tareas con sus seams y cuatro huecos (H1 a H4). Lo aprobé una vez, con H3 en la opción recomendada. A mitad de T-API-22 apareció un quinto hueco, en el contrato (H5), y Claude Code se detuvo a preguntarme.
+
+**Correcciones a los requerimientos (T-API-22):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §8.2 y §8.5: índices `ix_asiento_cuenta_creado` e `ix_asiento_cuenta_tipo_creado` | La migración 3, ya aplicada y probada, los creó como `ix_asiento_historial` e `ix_asiento_historial_tipo` | H1: design.md usa los nombres de la migración; la migración no cambia |
+| `openapi.yaml`, `400` del historial: `oneOf [ProblemaValidacion, Problema]` | `ProblemaValidacion` es `allOf` de `Problema`, así que todo `validation-error` cumple los dos y Ajv rechaza el `oneOf`. Es el mismo caso del `422` de la sesión 21 | H5: `anyOf`, con los tipos de `shared` regenerados. Aprobado al detenerse |
+
+**Decisiones de implementación (T-API-22):**
+- Módulo `movimientos` (§2.1). El dominio calcula la contraparte de §8.1, el `filtrosHash` y el cursor (decodificación estricta con Zod). El repositorio arma la consulta solo con fragmentos constantes (`construirConsultaMovimientos`, pura). El caso de uso verifica la cuenta antes que el cursor: un cursor de una cuenta ajena responde `404`, y uno de otra cuenta propia, `invalid-cursor`.
+- El `id` del asiento llega como número (parser de `int8`) y se expone como texto, igual que `i` en el cursor.
+- Un `ENVIO` sin beneficiario lanza un error: por §6.1, toda `TERCERO` sale de un beneficiario.
+- Prueba unitaria de DD-37 sobre las 16 combinaciones de filtros, con valores marcadores: ninguno aparece en el texto, todos aparecen en los parámetros, cada `$n` está en el arreglo y no hay `OFFSET`.
+- Se activó el escenario del cursor de T-API-21: 60 asientos previos y 30 transferencias concurrentes hacia la cuenta mientras se recorre con `limite = 7`. Cada asiento previo aparece exactamente una vez.
+- Mutaciones, las dos rojas: (a) `<` → `<=` en el cursor: falló la prueba de 25 con el mismo instante (27 en vez de 25), junto con otras tres de paginación; (b) sin `cuentaId` en el `filtrosHash`: el cursor de otra cuenta respondió `200` en vez de `400 invalid-cursor`.
+- La nota sobre los abortos de Vitest en Windows salió de la sesión 21 y pasó al README: es del entorno, no una corrección a los requerimientos.
+
+**Commits relacionados (T-API-22):** `3151897` (H1), `56b9c76` (H5) y el de T-API-22.
 
 ---
 

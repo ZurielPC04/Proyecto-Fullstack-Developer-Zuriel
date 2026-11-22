@@ -28,6 +28,13 @@ export class ValidacionFallida extends ErrorDominio {
   }
 }
 
+/** `400 invalid-cursor`: el contenido del cursor no se decodifica o es de otros filtros (R-5.7). */
+export class CursorInvalido extends ErrorDominio {
+  constructor(opciones?: ErrorOptions) {
+    super('invalid-cursor', {}, opciones);
+  }
+}
+
 /** `401 unauthorized`: access o refresh inválido, el mismo problem para cualquier causa (R-1.10, R-1.11). */
 export class NoAutenticado extends ErrorDominio {
   constructor(opciones?: ErrorOptions) {

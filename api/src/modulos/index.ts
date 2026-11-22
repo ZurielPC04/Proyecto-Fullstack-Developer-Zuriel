@@ -4,6 +4,7 @@ import { crearModuloBeneficiarios } from './beneficiarios/index.js';
 import { crearModuloCuentas } from './cuentas/index.js';
 import { crearModuloIdentidad } from './identidad/index.js';
 import { crearModuloLimites } from './limites/index.js';
+import { crearModuloMovimientos } from './movimientos/index.js';
 import { crearModuloTransferencias } from './transferencias/index.js';
 
 /**
@@ -19,5 +20,6 @@ export async function crearModulos(dependencias: DependenciasApp): Promise<Route
     crearModuloBeneficiarios(dependencias),
     crearModuloTransferencias(dependencias),
     crearModuloLimites(dependencias),
+    crearModuloMovimientos(dependencias),
   ];
 }
