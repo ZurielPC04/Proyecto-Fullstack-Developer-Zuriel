@@ -13,7 +13,8 @@
     "pretest:integracion": "npm run build -w @billetera/shared",
     "test:integracion": "vitest run --config vitest.integracion.config.ts",
     "db:migrate": "tsx --env-file-if-exists=.env src/scripts/migrar.ts",
-    "db:migrate:revertir": "tsx --env-file-if-exists=.env src/scripts/migrar.ts --revertir"
+    "db:migrate:revertir": "tsx --env-file-if-exists=.env src/scripts/migrar.ts --revertir",
+    "db:seed": "tsx --env-file-if-exists=.env src/scripts/seed.ts"
   },
   "devDependencies": {
     "@types/cookie-parser": "1.4.10",

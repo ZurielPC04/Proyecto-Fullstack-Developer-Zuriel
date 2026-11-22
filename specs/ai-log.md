@@ -738,6 +738,27 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-API-24):** `de5128f` (H2) y el de T-API-24.
 
+**Correcciones a los requerimientos (T-API-25):**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| §3.7: Ana con `8000000` y Beto con `50000` como "saldo inicial", y "`FONDEO_BIENVENIDA_CENTAVOS` se suma por el mismo camino" | Con el valor de desarrollo (`1000000`), Beto quedaba con $10,500.00, y para mostrar el saldo insuficiente había que superar el umbral del código | H3: los montos de la tabla son el saldo final exacto; el seed arma `registrar` con bienvenida 0 y deposita el monto con `fondear` |
+| §3.7: "dos corridas dan el mismo resultado" | `registrar` genera CLABEs al azar (DD-19) y la base, uuid; no quedaba definido qué se compara | H3: CLABEs demo fijas mediante el `generarClabe` inyectable; "el mismo resultado" son correos, CLABEs, saldos, beneficiarios y conteos, sin los uuid |
+| §3.7 no tenía guarda | El seed vacía tablas como dueño | H3: se niega con `NODE_ENV=production` o con cualquier URL hacia `billetera_test` |
+
+**Decisiones de implementación (T-API-25):**
+- `src/scripts/seed.ts` como punto de entrada, con sus piezas en `src/scripts/seed/`: `guarda.ts` (pura), `vaciar.ts`, `demo.ts`, `verificacion.ts` (evaluación pura y lectura como dueño) y `resumen.ts`. Agregué `db:seed` en `api` y en la raíz.
+- La configuración sale del mismo esquema de §2.4 (`cargarConfiguracion`). Si es inválida, solo se reportan los nombres de las variables.
+- La fase 1 usa `registrar`, `fondear`, `consultas.listar` y `beneficiarios.crear` con el rol `billetera_app`, dentro de `contextoPeticion.run({ reqId: 'seed' })`: los seis eventos de auditoría quedan con `request_id = 'seed'`. La contraseña demo pasa por `esquemaRegistro` de `shared`, el mismo de la ruta de registro.
+- CLABEs demo: Ana `999180000000000015` (Principal) y `…028` (Ahorro); Beto `…031` y `…044`.
+- La duración se mide con `process.hrtime.bigint()`: la regla de lint de DD-42 rechazó `Math.round` y `toFixed` aunque el valor no fuera un monto.
+- Verificación: dos corridas seguidas dan el mismo resumen (`diff`, ignorando las líneas de log). La guarda se probó también en ejecución: con `NODE_ENV=production` y con `DATABASE_URL_MIGRACIONES` hacia `billetera_test` termina con código 1 y sin tocar la base.
+- Demo con `curl` y la API en segundo plano: saldo insuficiente con Beto `422 saldo-insuficiente`; normal `201`; con código `202` y confirmación `201`; límite excedido con Ana `422 limite-diario-excedido`. En la primera corrida, el caso de Beto respondió `201`: como iba después de que Ana le enviara $15,100.00, ya tenía saldo. **El caso de Beto tiene que ir antes de que Ana le transfiera**; queda para el guion del video (T-DOC-03). Volví a sembrar y repetí la demo en ese orden.
+- Al detener la API de la demo, el proceso hijo de `tsx watch` siguió escuchando en el puerto 3000; lo detuve por su PID.
+- La integración cayó dos veces con el `0xC0000409` de Windows (`data-source`, `integridad`) y pasó completa en la tercera corrida.
+
+**Commits relacionados (T-API-25):** `d8d5d1e` (H3) y el de T-API-25.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero
