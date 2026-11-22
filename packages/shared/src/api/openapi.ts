@@ -981,7 +981,10 @@ export interface operations {
                     "application/json": components["schemas"]["PaginaMovimientos"];
                 };
             };
-            /** @description Parámetros inválidos (`validation-error`) o cursor inválido (`invalid-cursor`). */
+            /**
+             * @description Parámetros inválidos (`validation-error`) o cursor inválido (`invalid-cursor`). `anyOf` y
+             *     no `oneOf`: todo `ProblemaValidacion` cumple también `Problema`.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;

@@ -274,11 +274,13 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PaginaMovimientos' }
         '400':
-          description: Parámetros inválidos (`validation-error`) o cursor inválido (`invalid-cursor`).
+          description: |
+            Parámetros inválidos (`validation-error`) o cursor inválido (`invalid-cursor`). `anyOf` y
+            no `oneOf`: todo `ProblemaValidacion` cumple también `Problema`.
           content:
             application/problem+json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: '#/components/schemas/ProblemaValidacion'
                   - $ref: '#/components/schemas/Problema'
         '401': { $ref: '#/components/responses/NoAutenticado' }
