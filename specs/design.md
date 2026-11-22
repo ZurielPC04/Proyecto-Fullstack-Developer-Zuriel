@@ -2572,6 +2572,12 @@ stateDiagram-v2
 - **Rechazo** (R-4.12): muestra `mensajeDeProblema(type)` y un botón "Nueva transferencia", que vuelve a `Editando` con una llave nueva (R-4.23, R-6.15). Nunca muestra comprobante.
 - **`codigoSimulado`:** si viene, se muestra junto a la captura, marcado como "Modo de prueba", y se guarda con el intento (DD-25).
 
+**Formularios** (DD-03, RNF-18):
+
+- React Hook Form con `zodResolver` y los esquemas de `shared` tal cual, sin copiarlos en la web.
+- Los mensajes por defecto de Zod (tipo inválido, campo faltante, opción fuera del `enum`) vienen en inglés. La web activa el locale español de Zod (`z.config(es())`, de `zod/locales`) en `src/app/zod-es.ts`. Ese módulo se importa antes que cualquier esquema, en `main.tsx` y en el setup de las pruebas. `shared` y `web` resuelven la misma instalación de `zod`, así que la configuración global también aplica a los esquemas de `shared`. Los mensajes propios de los esquemas (política de contraseñas de §5.1, textos de DD-16 y de `validarClabe`) ya están en español y tienen prioridad sobre el locale.
+- La API no activa el locale: el usuario ve el `detail` fijo de §7.1, y los errores de campo de la web salen de su propia validación. La app móvil hace lo mismo que la web en su esqueleto.
+
 **Montos y fechas:**
 
 - El campo de monto es de texto con `inputMode="decimal"`, y se convierte con `montoTextoACentavos` al validar.
