@@ -59,7 +59,9 @@ describe('navegación según la sesión [DD-03]', () => {
     await screen.findByText('Entrar');
     await iniciarSesion('una contraseña larga');
     expect(await screen.findByText('Cerrar sesión')).toBeTruthy();
-    expect(peticiones.at(-1)?.cuerpo).toMatchObject({ cliente: 'movil' });
+    expect(peticiones.find((p) => p.ruta === '/auth/login')?.cuerpo).toMatchObject({
+      cliente: 'movil',
+    });
   });
 
   it('R-1.7: con credenciales incorrectas muestra el mensaje del formulario', async () => {

@@ -4,14 +4,16 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useEffect, useSyncExternalStore } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { type ContextoApp, ProveedorApp } from './contexto';
-import { PantallaInicio } from './pantallas/PantallaInicio';
 import { PantallaLogin } from './pantallas/PantallaLogin';
+import { PantallaMovimientos } from './pantallas/PantallaMovimientos';
+import { PantallaSaldo } from './pantallas/PantallaSaldo';
 import { PantallaSalud } from './pantallas/PantallaSalud';
 
 export type RutasRaiz = {
   Login: undefined;
   Salud: undefined;
-  Inicio: undefined;
+  Saldo: undefined;
+  Movimientos: { cuentaId: string; nombre: string };
 };
 
 const Stack = createNativeStackNavigator<RutasRaiz>();
@@ -37,11 +39,26 @@ export function Raiz({ contexto }: { contexto: ContextoApp }) {
       <NavigationContainer>
         <Stack.Navigator>
           {estado === 'con-sesion' ? (
-            <Stack.Screen
-              name="Inicio"
-              component={PantallaInicio}
-              options={{ title: 'Billetera' }}
-            />
+            <>
+              <Stack.Screen name="Saldo" options={{ title: 'Saldo' }}>
+                {({ navigation }) => (
+                  <PantallaSaldo
+                    alVerMovimientos={(cuenta) =>
+                      navigation.navigate('Movimientos', {
+                        cuentaId: cuenta.id,
+                        nombre: cuenta.nombre,
+                      })
+                    }
+                  />
+                )}
+              </Stack.Screen>
+              <Stack.Screen
+                name="Movimientos"
+                options={({ route }) => ({ title: `Movimientos · ${route.params.nombre}` })}
+              >
+                {({ route }) => <PantallaMovimientos cuentaId={route.params.cuentaId} />}
+              </Stack.Screen>
+            </>
           ) : (
             <>
               <Stack.Screen name="Login" options={{ title: 'Iniciar sesión' }}>

@@ -1,5 +1,8 @@
 // Dobles de prueba: almacén en memoria y fetch simulado que registran el orden de las llamadas.
+import { crearCliente } from '../src/api/cliente';
 import type { Almacen } from '../src/auth/almacen';
+import { crearSesion } from '../src/auth/sesion';
+import type { ContextoApp } from '../src/contexto';
 
 export const API = 'http://192.168.1.50:3000/api';
 
@@ -71,6 +74,23 @@ export function tokens(access: string, refresh: string): Response {
     refreshToken: refresh,
     refreshExpiraEn: '2026-11-29T12:00:00.000Z',
   });
+}
+
+/** Contexto de la app con dobles: la API responde con `manejador`. */
+export function contextoDePrueba(
+  manejador: Manejador,
+  almacenInicial: Record<string, string> = {},
+) {
+  const registro: Registro = [];
+  const almacen = almacenEnMemoria(registro, almacenInicial);
+  const { fetchFn, peticiones } = fetchSimulado(registro, manejador);
+  const sesion = crearSesion({ apiUrl: API, almacen, fetchFn });
+  const contexto: ContextoApp = {
+    apiUrl: API,
+    sesion,
+    cliente: crearCliente({ apiUrl: API, sesion, fetchFn }),
+  };
+  return { contexto, almacen, peticiones };
 }
 
 /** Una promesa que se resuelve a mano, para controlar cuándo responde el refresh. */

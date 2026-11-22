@@ -1048,7 +1048,19 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - `actionlint` 1.7.12 (imagen local de Docker) sin errores. Los pasos de los dos jobs se reprodujeron en local: `shared` 292, `api` 203 y `web` 82 en `unitarias`, y 32 en `movil`.
 - **La casilla queda sin marcar** hasta que yo confirme en GitHub los cuatro jobs en verde en `main`, la protección de `main` con los cuatro jobs obligatorios y un pull request de prueba con una prueba rota bloqueado. Es el mismo criterio de T-CI-01 (sesión 7).
 
-**Commits relacionados:** el de T-MOB-02, `c829c00` (§14.5) y el de T-CI-03.
+**T-MOB-03 (saldo y movimientos):**
+- **Saldo:** pide `GET /cuentas` y `GET /limites`. Muestra cada cuenta con su saldo y el límite disponible, lo consumido y el límite del día tal como llegan de la API, sin recalcular (R-6.7).
+- **Movimientos:** pide `GET /cuentas/{id}/movimientos?limite=20`, sin cursor ni paginación (R-5.12). Usa las mismas etiquetas de tipo que la web, así que una entrada desde Fondeo es "Depósito" (R-5.9).
+- Las dos pantallas tienen los estados de RNF-17 con un hook `useCarga`: cargando, error con "Reintentar", vacío ("Sin movimientos") y éxito. Los montos usan `formatearMXNSinIntl`.
+- Saldo reemplaza la pantalla provisional de T-MOB-02, y "Cerrar sesión" pasa a Saldo. Con eso se corrigió una prueba de T-MOB-02 que suponía que el login era la última petición; ahora Saldo pide `/cuentas` justo después.
+- **Pendiente de verificar en el teléfono:** la fecha de cada movimiento usa `Intl.DateTimeFormat` con `timeZone: America/Mexico_City`. Jest corre en Node, no en Hermes. Si Hermes no soporta la zona, `formatearFecha` muestra el instante ISO en lugar de lanzar. Hay que revisarlo en la próxima prueba manual.
+
+**Mutaciones de T-MOB-03** (todas en rojo, revertidas con `sha256sum` idéntico):
+- `limite = 50`: rojo en las dos pruebas de R-5.12.
+- `DEPOSITO` con la etiqueta "Recepción": rojo en R-5.9.
+- "Reintentar" que no vuelve a pedir: rojo en las pruebas de error de Saldo y de Movimientos.
+
+**Commits relacionados:** el de T-MOB-02, `c829c00` (§14.5), el de T-CI-03 y el de T-MOB-03.
 
 ---
 
