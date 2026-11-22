@@ -640,7 +640,8 @@ flowchart LR
 - **Alcance** (§13.2 "Sesión"): cliente `fetch` tipado con `paths` y `AbortController` de 15 s; access en una variable de módulo; refresh dentro de `navigator.locks.request('billetera-refresh', …)` con revisión previa; un refresh y una repetición tras `401`; ruta protegida que espera al refresh al cargar; pantallas de login y registro (el registro redirige al login); logout que borra el access, el intento de `sessionStorage` y la caché.
 - **Verificación:** `npm test -w web -- sesion`:
   - el access nunca se escribe en `localStorage` ni en `sessionStorage` (espía sobre `Storage`);
-  - dos pestañas simuladas con un lock falso producen **un** refresh;
+  - dos peticiones de la misma pestaña que reciben `401` a la vez producen **un** refresh (revisión previa dentro del lock);
+  - dos pestañas simuladas (dos instancias del módulo con un lock falso compartido y un servidor que rota la cookie y detecta el reúso) refrescan **sin solaparse** y **sin reúso** (§13.2, R-1.15);
   - `401` → refresh → repetición única;
   - recarga sin cookie válida → login;
   - logout borra el intento guardado;

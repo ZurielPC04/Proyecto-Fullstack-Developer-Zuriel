@@ -2513,6 +2513,7 @@ Las reglas de dinero aplican también en `api/**`, código y pruebas. La única 
 - Al cargar la app, una ruta protegida espera a `POST /auth/refresh` antes de pintar datos (R-1.14).
 - El cliente `fetch` agrega `Authorization`. Ante un `401 unauthorized`, refresca **una vez** y repite la petición original **una vez**. Repetir es seguro: un `POST /transferencias` lleva la misma llave. Un `401 credenciales-invalidas` del login no dispara el refresh: se muestra su texto en el formulario.
 - El refresh corre dentro de `navigator.locks.request('billetera-refresh', …)`. Dentro del lock, la pestaña vuelve a revisar si otra ya obtuvo un access válido mientras esperaba; si es así, no rota (R-1.15).
+  - **Alcance de la revisión previa.** El access vive en la memoria de cada pestaña, así que una pestaña no puede ver el access que obtuvo otra. La revisión ahorra refresh **dentro de una misma pestaña**: si varias peticiones reciben `401` a la vez, la primera rota y las demás encuentran, dentro del lock, un access distinto del que les falló y lo reutilizan. **Entre pestañas** hay un refresh por pestaña. El lock garantiza que nunca se solapan, y la segunda pestaña manda la cookie que la primera ya rotó, así que la API no detecta un falso reúso (R-1.15).
 - Cerrar sesión llama a `POST /auth/logout`, borra el access en memoria y el intento de `sessionStorage`, y limpia la caché de TanStack Query (R-1.12).
 
 **Datos del servidor** (TanStack Query):
