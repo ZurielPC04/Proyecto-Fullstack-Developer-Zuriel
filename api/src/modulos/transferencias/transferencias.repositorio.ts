@@ -243,6 +243,11 @@ export function leerTransferencia(
   return leer(tx, 't.id = $1 AND t.usuario_id = $2', [transferenciaId, usuarioId], bloquear);
 }
 
+/** §6.1 pasos 1 y 3.2: la transferencia de esta llave para este usuario, si existe (D-03). */
+export function leerPorLlave(tx: EntityManager, usuarioId: string, llave: string) {
+  return leer(tx, 't.usuario_id = $1 AND t.llave_idempotencia = $2', [usuarioId, llave], false);
+}
+
 export interface DatosFondeo {
   cuentaDestinoId: string;
   montoCentavos: number;

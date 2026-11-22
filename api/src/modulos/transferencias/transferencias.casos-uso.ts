@@ -1,6 +1,7 @@
+import type { Logger } from 'pino';
 import type { EntityManager } from 'typeorm';
 import type { ConTransaccion } from '../../plataforma/db/unidad-de-trabajo.js';
-import { MismaCuenta, NoEncontrado } from '../../plataforma/http/errores.js';
+import { LlaveReutilizada, MismaCuenta, NoEncontrado } from '../../plataforma/http/errores.js';
 import type { Reloj } from '../../plataforma/reloj/index.js';
 import { registrarEvento } from '../auditoria/auditoria.casos-uso.js';
 import {
@@ -20,6 +21,7 @@ import {
   insertarAsientos,
   insertarFondeo,
   insertarTransferencia,
+  leerPorLlave,
   leerTransferencia,
 } from './transferencias.repositorio.js';
 import type { FilaTransferencia } from './transferencias.respuesta.js';
@@ -103,20 +105,109 @@ async function resolverDestino(
   };
 }
 
+/** §6.2: misma llave y mismo hash → la fila original; hash distinto → `422` (R-4.15). */
+function repeticion(fila: FilaTransferencia & { hash: string }, hash: string): FilaTransferencia {
+  if (fila.hash !== hash) throw new LlaveReutilizada();
+  return fila;
+}
+
+/** `23505` en `uq_transferencia_usuario_llave` (§7.3); TypeORM deja el error de pg en `driverError`. */
+function esLlaveDuplicada(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { driverError } = error as { driverError?: unknown };
+  const pg = (typeof driverError === 'object' && driverError !== null ? driverError : error) as {
+    code?: unknown;
+    constraint?: unknown;
+  };
+  return pg.code === '23505' && pg.constraint === 'uq_transferencia_usuario_llave';
+}
+
 export interface DependenciasCasosUsoTransferencias {
   conTransaccion: ConTransaccion;
   reloj: Reloj;
+  logger: Logger;
 }
 
 /** HU-4: crear y consultar transferencias del `usuarioId` autenticado (§6.1). */
 export function crearCasosUsoTransferencias({
   conTransaccion,
   reloj,
+  logger,
 }: DependenciasCasosUsoTransferencias) {
+  /** §6.1 paso 3: la transacción de escritura, con el orden de bloqueo de D-12. */
+  async function escribir(
+    tx: EntityManager,
+    usuarioId: string,
+    llave: string,
+    hash: string,
+    solicitud: SolicitudTransferencia,
+    destino: DestinoResuelto,
+  ): Promise<FilaTransferencia> {
+    const { cuentaOrigenId, montoCentavos } = solicitud;
+    await bloquearUsuario(tx, usuarioId); // 3.1 (D-04)
+    // 3.2: con el usuario bloqueado, una petición simultánea con la misma llave ya confirmó o
+    // todavía no empieza; si confirmó, su fila está aquí (R-4.16).
+    const enEspera = await leerPorLlave(tx, usuarioId, llave);
+    if (enEspera) return repeticion(enEspera, hash);
+    const saldos = await bloquearCuentas(tx, [cuentaOrigenId, destino.cuentaDestinoId]); // 3.3 (D-12)
+    const ahora = await reloj.ahora(tx); // 3.4, después de los bloqueos (DD-36)
+    const decision = decidir({
+      tipo: destino.tipo,
+      montoCentavos,
+      saldoOrigenCentavos: saldos.get(cuentaOrigenId) ?? 0,
+    });
+    const transferenciaId = await insertarTransferencia(tx, {
+      usuarioId,
+      tipo: destino.tipo,
+      cuentaOrigenId,
+      cuentaDestinoId: destino.cuentaDestinoId,
+      beneficiarioId: destino.beneficiarioId,
+      montoCentavos,
+      concepto: solicitud.concepto,
+      referencia: solicitud.referencia,
+      estado: decision.estado,
+      motivoRechazo: decision.estado === 'RECHAZADA' ? decision.motivo : null,
+      llave,
+      hash,
+      ahora,
+    });
+    if (decision.estado === 'APLICADA') {
+      await insertarAsientos(tx, {
+        transferenciaId,
+        tipo: destino.tipo,
+        cuentaOrigenId,
+        cuentaDestinoId: destino.cuentaDestinoId,
+        montoCentavos,
+        ahora,
+      });
+      await registrarEvento(tx, {
+        tipo: 'transferencia-aplicada',
+        usuarioId,
+        datos: {
+          transferenciaId,
+          tipo: destino.tipo,
+          montoCentavos,
+          cuentaOrigenId,
+          cuentaDestinoId: destino.cuentaDestinoId,
+        },
+      });
+    } else {
+      await registrarEvento(tx, {
+        tipo: 'transferencia-rechazada',
+        usuarioId,
+        datos: { transferenciaId, motivo: decision.motivo, montoCentavos },
+      });
+    }
+    const fila = await leerTransferencia(tx, usuarioId, transferenciaId);
+    if (!fila) throw new Error('La transferencia recién creada no se pudo leer');
+    return fila;
+  }
+
   return {
     /**
      * §6.1. Devuelve la fila: un rechazo de negocio es un resultado guardado y confirmado, no
-     * una excepción (§2.1, D-03). `respuestaDeTransferencia` la traduce a HTTP.
+     * una excepción (§2.1, D-03). `respuestaDeTransferencia` la traduce a HTTP, igual en la
+     * primera respuesta y en la repetición (R-4.14).
      */
     async crear(
       usuarioId: string,
@@ -124,64 +215,23 @@ export function crearCasosUsoTransferencias({
       solicitud: SolicitudTransferencia,
     ): Promise<FilaTransferencia> {
       const hash = hashPeticion(solicitud);
-      const destino = await conTransaccion((tx) => resolverDestino(tx, usuarioId, solicitud));
-      const { cuentaOrigenId, montoCentavos } = solicitud;
+      // 1. Búsqueda rápida, sin bloqueo: una repetición no abre la transacción de escritura.
+      const previa = await conTransaccion((tx) => leerPorLlave(tx, usuarioId, llave));
+      if (previa) return repeticion(previa, hash);
 
-      const fila = await conTransaccion(async (tx) => {
-        await bloquearUsuario(tx, usuarioId); // 3.1 (D-04)
-        const saldos = await bloquearCuentas(tx, [cuentaOrigenId, destino.cuentaDestinoId]); // 3.3 (D-12)
-        const ahora = await reloj.ahora(tx); // 3.4, después de los bloqueos (DD-36)
-        const decision = decidir({
-          tipo: destino.tipo,
-          montoCentavos,
-          saldoOrigenCentavos: saldos.get(cuentaOrigenId) ?? 0,
-        });
-        const transferenciaId = await insertarTransferencia(tx, {
-          usuarioId,
-          tipo: destino.tipo,
-          cuentaOrigenId,
-          cuentaDestinoId: destino.cuentaDestinoId,
-          beneficiarioId: destino.beneficiarioId,
-          montoCentavos,
-          concepto: solicitud.concepto,
-          referencia: solicitud.referencia,
-          estado: decision.estado,
-          motivoRechazo: decision.estado === 'RECHAZADA' ? decision.motivo : null,
-          llave,
-          hash,
-          ahora,
-        });
-        if (decision.estado === 'APLICADA') {
-          await insertarAsientos(tx, {
-            transferenciaId,
-            tipo: destino.tipo,
-            cuentaOrigenId,
-            cuentaDestinoId: destino.cuentaDestinoId,
-            montoCentavos,
-            ahora,
-          });
-          await registrarEvento(tx, {
-            tipo: 'transferencia-aplicada',
-            usuarioId,
-            datos: {
-              transferenciaId,
-              tipo: destino.tipo,
-              montoCentavos,
-              cuentaOrigenId,
-              cuentaDestinoId: destino.cuentaDestinoId,
-            },
-          });
-        } else {
-          await registrarEvento(tx, {
-            tipo: 'transferencia-rechazada',
-            usuarioId,
-            datos: { transferenciaId, motivo: decision.motivo, montoCentavos },
-          });
-        }
-        return leerTransferencia(tx, usuarioId, transferenciaId);
-      });
-      if (!fila) throw new Error('La transferencia recién creada no se pudo leer');
-      return fila;
+      const destino = await conTransaccion((tx) => resolverDestino(tx, usuarioId, solicitud));
+      try {
+        return await conTransaccion((tx) =>
+          escribir(tx, usuarioId, llave, hash, solicitud, destino),
+        );
+      } catch (error) {
+        // §6.2, red del 23505: la transacción quedó abortada; la ganadora se lee en otra.
+        if (!esLlaveDuplicada(error)) throw error;
+        logger.warn({ usuarioId, llave }, 'idempotencia: 23505 en la llave; se lee la ganadora');
+        const ganadora = await conTransaccion((tx) => leerPorLlave(tx, usuarioId, llave));
+        if (!ganadora) throw error;
+        return repeticion(ganadora, hash);
+      }
     },
 
     /** R-4.10 y D-10: ajena o inexistente lanzan el mismo `NoEncontrado`. */

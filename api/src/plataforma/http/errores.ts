@@ -56,6 +56,13 @@ export class MismaCuenta extends ErrorDominio {
   }
 }
 
+/** `422 idempotency-key-reused`: la misma llave del mismo usuario con otro cuerpo (R-4.15). */
+export class LlaveReutilizada extends ErrorDominio {
+  constructor(opciones?: ErrorOptions) {
+    super('idempotency-key-reused', {}, opciones);
+  }
+}
+
 /** `429 too-many-requests`: rate limit excedido; el limitador ya fijó `Retry-After` (§11). */
 export class DemasiadasPeticiones extends ErrorDominio {
   constructor(opciones?: ErrorOptions) {

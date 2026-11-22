@@ -12,6 +12,7 @@ export function crearModuloTransferencias(dependencias: DependenciasApp): Router
   const casos = crearCasosUsoTransferencias({
     conTransaccion: crearConTransaccion({ dataSource, logger }),
     reloj,
+    logger,
   });
   return rutasTransferencias(crearControladorTransferencias(casos), crearAutenticar(config));
 }

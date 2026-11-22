@@ -638,7 +638,17 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - Mutaciones, las dos rojas en la prueba de DD-36: (a) sin `FOR UPDATE` en las cuentas; (b) leer el instante antes de bloquear las cuentas. Se aplicaron y revirtieron con la herramienta de edición, y el hash se verificó con `sha256sum` en un comando aparte.
 - **Abortos intermitentes de la integración en Windows:** varias corridas completas con `forks` terminaron con un worker en `0xC0000409` ("during started state"), cada vez en un archivo distinto (`data-source`, `entidades`, `sesion`, `registro`, `integridad`, `invariantes`), sin mensaje en stderr y sin informe de diagnóstico de Node. Con `HEAD` limpio pasó dos veces; con `--pool=threads` pasó dos veces; después, `forks` con el mismo código también pasó dos veces, incluida la corrida oficial. La bisección hecha mientras fallaba (router vacío o sin montar) resultó no concluyente: la causa no está en el código de la tarea. Hipótesis sin confirmar: el orden de los archivos (Vitest corre primero los que fallaron antes) o el entorno de Windows. No se cambió la configuración.
 
-**Commits relacionados (T-API-17):** `93685cb` (H1) y el de T-API-17.
+**Commits relacionados (T-API-17):** `93685cb` (H1) y `830bf7d`.
+
+**Decisiones de implementación (T-API-18):**
+- Sin correcciones a los requerimientos: §6.1 y §6.2 bastaron.
+- La llave se busca dos veces: antes de resolver el destino, sin bloqueo (una repetición no abre la transacción de escritura), y otra con el usuario bloqueado (paso 3.2), que es la que resuelve R-4.16. Las dos pasan por `repeticion(fila, hash)`: mismo hash → la fila original; otro hash → `LlaveReutilizada` (`422 idempotency-key-reused`).
+- Red del `23505` en `uq_transferencia_usuario_llave`: se reconoce por `code` y `constraint`, se registra `warn` y la ganadora se lee en otra `conTransaccion`. Con el bloqueo del usuario no se puede provocar desde una prueba sin una mutación, así que queda sin prueba de integración propia.
+- La prueba de R-4.19 retiene la fila del usuario con `FOR UPDATE` desde otra conexión: la petición responde `503 retryable` con `Retry-After: 1` a los 5 s sin dejar fila, y el reintento con la misma llave aplica una sola vez.
+- La normalización del hash se prueba de punta a punta: espacios, `e` + acento combinado frente a `é`, y uuid y llave en mayúsculas dan la misma transferencia.
+- Mutación (c), no comparar el hash: roja; la misma llave con 301 en vez de 300 respondió `201` (la repetición) en lugar de `422`.
+
+**Commits relacionados (T-API-18):** el de T-API-18.
 
 ---
 
