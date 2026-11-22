@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from 'react';
 import { ErrorApi } from '../api/errores';
 import { mensajeDeError } from '../api/mensaje-error';
+import { usuarioActual } from '../auth/sesion';
 import { ErrorConReintento } from '../componentes/ErrorConReintento';
 import { useBeneficiarios } from '../consultas/beneficiarios';
 import { useCuentas, useLimites } from '../consultas/cuentas';
@@ -73,7 +74,7 @@ function soloPendiente(p: Pendiente): Pendiente {
  * no tiene una respuesta definitiva.
  */
 function guardarConfirmacion(p: Pendiente, codigoEnVuelo?: string) {
-  guardarIntento({
+  guardarIntento(usuarioActual(), {
     fase: 'confirmacion',
     ...soloPendiente(p),
     ...(codigoEnVuelo === undefined ? {} : { codigoEnVuelo }),
@@ -90,7 +91,8 @@ function textoIntentos(n: number): string {
  */
 export function Transferir() {
   // R-4.25: con un intento guardado, la máquina arranca en VerificandoAnterior.
-  const [guardado] = useState<IntentoGuardado | null>(leerIntento);
+  // R-1.12: solo el intento del usuario de esta sesión; uno ajeno se borra sin mostrarlo.
+  const [guardado] = useState<IntentoGuardado | null>(() => leerIntento(usuarioActual()));
   const [estado, setEstado] = useState<Estado>(
     guardado ? { fase: 'verificandoAnterior' } : { fase: 'editando', valores: null },
   );
@@ -123,7 +125,7 @@ export function Transferir() {
     setEstado(
       modo === 'reanudacion' ? { fase: 'verificandoAnterior' } : { ...intento, fase: 'enviando' },
     );
-    guardarIntento({ fase: 'creacion', ...intento });
+    guardarIntento(usuarioActual(), { fase: 'creacion', ...intento });
     try {
       const resultado = await crearTransferencia(intento.llave, intento.datos.solicitud);
       if (resultado.status === 201) {

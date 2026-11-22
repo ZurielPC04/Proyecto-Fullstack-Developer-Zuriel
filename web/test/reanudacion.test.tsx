@@ -11,9 +11,11 @@ import {
   puerta,
   transferenciaEnEstado,
   transferenciasResponden,
+  USUARIO_B,
 } from './api-falsa';
+import { CLAVE_INTENTO } from '../src/transferencia/almacen-intento';
 import { confirmarCodigo, enviarABeto, recargar } from './flujo-transferencia';
-import { servidor, tokens } from './servidor';
+import { accessDe, problema, servidor, tokens } from './servidor';
 import { renderizarApp } from './utilidades';
 
 const aplicada = () => HttpResponse.json(COMPROBANTE, { status: 201 });
@@ -122,5 +124,39 @@ describe('reanudación tras recarga (R-4.25, DD-25, DD-32)', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Transferir' })).toBeVisible();
     expect(screen.queryByText(/Modo de prueba/)).toBeNull();
     expect(creaciones).toHaveLength(1);
+  });
+
+  it('R-1.12 un intento de otro usuario se borra sin enviarlo ni mostrarlo', async () => {
+    conDatosDeTransferencia();
+    const creaciones = transferenciasResponden(() => HttpResponse.json(PENDIENTE, { status: 202 }));
+    const consultas = estadoResponde(() =>
+      HttpResponse.json(transferenciaEnEstado('PENDIENTE_CONFIRMACION')),
+    );
+    const usuario = userEvent.setup();
+    renderizarApp('/transferir');
+    await enviarABeto(usuario);
+    await screen.findByRole('heading', { level: 1, name: 'Código de confirmación' });
+
+    // La sesión de A expira sin cerrarse: la recarga ya no obtiene access y lleva al login.
+    servidor.use(http.post('/api/auth/refresh', () => problema(401, 'unauthorized')));
+    recargar();
+    await screen.findByRole('heading', { level: 1, name: 'Iniciar sesión' });
+
+    // B inicia sesión en la misma pestaña y entra a Transferir.
+    servidor.use(http.post('/api/auth/login', () => tokens(accessDe(USUARIO_B))));
+    await usuario.type(screen.getByLabelText('Correo'), 'beto@demo.mx');
+    await usuario.type(screen.getByLabelText('Contraseña'), 'una frase larga y segura');
+    await usuario.click(screen.getByRole('button', { name: 'Entrar' }));
+    await screen.findByRole('heading', { level: 1, name: 'Resumen' });
+    const navegacion = screen.getByRole('navigation', { name: 'Principal' });
+    await usuario.click(within(navegacion).getByRole('link', { name: 'Transferir' }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Transferir' })).toBeVisible();
+    expect(screen.queryByText('Verificando operación anterior…')).toBeNull();
+    expect(screen.queryByText(/Modo de prueba/)).toBeNull();
+    expect(screen.queryByLabelText('Código')).toBeNull();
+    expect(creaciones).toHaveLength(1);
+    expect(consultas.n).toBe(0);
+    expect(sessionStorage.getItem(CLAVE_INTENTO)).toBeNull();
   });
 });

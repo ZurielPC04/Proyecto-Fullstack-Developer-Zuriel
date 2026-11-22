@@ -941,6 +941,24 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Commits relacionados (T-WEB-09):** el de T-WEB-09.
 
+**Corrección posterior (T-WEB-07): el intento pertenece a su usuario**
+
+| Qué decía | Problema | Corrección |
+|---|---|---|
+| R-1.12: la web borra el intento de `sessionStorage` **al cerrar sesión** | Si la sesión expiraba sin cerrarse y otro usuario iniciaba sesión en la misma pestaña, `/transferir` reanudaba el intento del anterior con el token del nuevo. La API respondía `404`, sin mover dinero, pero el nuevo usuario veía datos ajenos (destino, monto, código de prueba). Lo detectó Claude Code al cerrar T-WEB-09 y lo señaló en el resumen; yo pedí corregirlo | `docs(specs)` en R-1.12, §13.2 y §6.2: el intento lleva `usuarioId`, el `sub` del access. Al leerlo, si no coincide con el usuario de la sesión actual, si no lo trae o si no hay un `sub` legible, se borra sin enviarlo ni mostrarlo |
+
+- `sesion.ts` expone `usuarioActual()`, que lee el `sub` del payload del access sin verificar la firma: no es una decisión de seguridad del servidor, que vuelve a autenticar cada petición.
+- `guardarIntento(usuarioId, intento)` guarda el intento a nombre del usuario; sin un usuario conocido no lo guarda. `leerIntento(usuarioId)` borra el intento ajeno.
+- En las pruebas, `conSesion` entrega ahora un access con forma de JWT para el usuario A (`accessDe` en `test/servidor.ts`). Así, todas las pruebas de reanudación existentes comprueban además que el mismo usuario sí reanuda.
+- Prueba nueva en `reanudacion.test.tsx`:
+  - el usuario A deja un intento en la pantalla del código y su sesión expira, así que la recarga lleva al login;
+  - B inicia sesión en la misma pestaña y entra a "Transferir";
+  - B ve el formulario: no ve "Verificando operación anterior…" ni el código de prueba;
+  - no sale ninguna petición de creación ni de consulta, y el intento queda borrado.
+- Mutación: no comparar el `usuarioId` al leer → roja la prueba nueva (B reanuda el intento de A); revertida con `sha256sum` idéntico.
+
+**Commits relacionados:** el `docs(specs)` del intento por usuario y el `fix(web)` de T-WEB-07.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

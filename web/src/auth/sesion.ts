@@ -19,6 +19,24 @@ export function obtenerAccess(): string | null {
   return access;
 }
 
+/**
+ * R-1.12 y §13.2: el `sub` del access actual (§5.2), o null si no hay access o no se puede
+ * leer. Lee el payload sin verificar la firma: solo decide de quién es el intento guardado en
+ * esta pestaña; la API vuelve a autenticar cada petición.
+ */
+export function usuarioActual(): string | null {
+  const payload = access?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const claims = JSON.parse(atob(payload.replaceAll('-', '+').replaceAll('_', '/'))) as {
+      sub?: unknown;
+    };
+    return typeof claims.sub === 'string' && claims.sub !== '' ? claims.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export function haySesion(): boolean {
   return access !== null;
 }

@@ -14,6 +14,16 @@ export function problema(status: number, type: string, extra: Record<string, unk
 
 export const INSTANTE = '2026-11-22T18:00:00.000000Z';
 
+/**
+ * Access con forma de JWT (§5.2) cuyo `sub` es el usuario dado. La firma es falsa: la web solo
+ * lee el `sub` para saber de quién es el intento guardado (R-1.12); la API es la que verifica.
+ */
+export function accessDe(usuarioId: string): string {
+  const base64url = (json: object) =>
+    btoa(JSON.stringify(json)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+  return `${base64url({ alg: 'HS256', typ: 'JWT' })}.${base64url({ sub: usuarioId })}.firma`;
+}
+
 /** Respuesta `Tokens` de login o refresh de la web: solo el access, nunca el refresh (R-1.13). */
 export function tokens(accessToken: string) {
   return HttpResponse.json({ accessToken, accessExpiraEn: INSTANTE });

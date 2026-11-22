@@ -7,7 +7,7 @@ import type {
   Transferencia,
 } from '@billetera/shared';
 import { http, HttpResponse } from 'msw';
-import { INSTANTE, servidor, tokens } from './servidor';
+import { accessDe, INSTANTE, servidor, tokens } from './servidor';
 
 export const ID_PRINCIPAL = '0b6f1f8e-4f0c-4b8e-9a51-7d0e0f6a2c11';
 export const ID_AHORRO = '1c7a2e9f-5a1d-4c9f-8b62-8e1f1a7b3d22';
@@ -34,9 +34,12 @@ export const LIMITES: Limites = {
   reiniciaEn: '2026-11-23T06:00:00.000000Z',
 };
 
-/** La cookie de refresh es válida: la ruta protegida obtiene un access al cargar. */
-export function conSesion() {
-  servidor.use(http.post('/api/auth/refresh', () => tokens('access-1')));
+export const USUARIO_A = '6b1e0c2d-1f3a-4b5c-8d6e-7f8091a2b3c4';
+export const USUARIO_B = '7c2f1d3e-2a4b-4c6d-9e7f-8091a2b3c4d5';
+
+/** La cookie de refresh es válida: la ruta protegida obtiene un access del usuario al cargar. */
+export function conSesion(usuarioId: string = USUARIO_A) {
+  servidor.use(http.post('/api/auth/refresh', () => tokens(accessDe(usuarioId))));
 }
 
 export function conCuentas(cuentas: Cuenta[] = [PRINCIPAL, AHORRO], limites: Limites = LIMITES) {
