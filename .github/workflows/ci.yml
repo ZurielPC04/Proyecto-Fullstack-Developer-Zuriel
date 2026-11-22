@@ -1,6 +1,7 @@
 # CI de la billetera (design.md §14.5, RNF-29).
-# T-CI-01: jobs calidad y unitarias. Los pasos de redocly y del diff de
-# tipos llegan en T-SHR-06; integracion en T-CI-02; movil en T-CI-03.
+# Cuatro jobs obligatorios para fusionar a main (DD-46): calidad, unitarias,
+# integracion y movil. T-CI-01 creó calidad y unitarias; T-CI-02, integracion;
+# T-CI-03, movil.
 name: CI
 
 on:
@@ -50,7 +51,25 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Compilar shared
+        run: npm run build:shared
+      # §14.5: shared, api (sin base) y web de forma explícita; mobile corre en su job.
+      - run: npm test -w packages/shared -w api -w web
+
+  # T-CI-03 (design.md §14.5, DD-04): pruebas de la app móvil con jest-expo.
+  movil:
+    name: movil
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Compilar shared
+        run: npm run build:shared
+      - run: npm test -w mobile
 
   # T-CI-02 (design.md §14.5, DD-06): integración contra PostgreSQL 17 real.
   integracion:

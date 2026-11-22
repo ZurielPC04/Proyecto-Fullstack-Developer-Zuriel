@@ -1040,7 +1040,15 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - Access fijado antes de guardar el refresh: rojo en la prueba de DD-45.
 - Logout que no borra `billetera.intento`: rojo en las dos pruebas de logout.
 
-**Commits relacionados:** el de T-MOB-02.
+**§14.5 antes de T-CI-03:** la fila del job `movil` había quedado fuera de la tabla, separada por el párrafo de `init.sql`. Se regresó a la tabla en un commit `docs(specs)`, y `unitarias` ahora nombra `shared`, `api` y `web` de forma explícita para no repetir `mobile`.
+
+**T-CI-03 (job `movil`):**
+- `unitarias` compila `shared` y corre `npm test -w packages/shared -w api -w web`.
+- `movil` corre `npm ci`, compila `shared` y corre `npm test -w mobile`.
+- `actionlint` 1.7.12 (imagen local de Docker) sin errores. Los pasos de los dos jobs se reprodujeron en local: `shared` 292, `api` 203 y `web` 82 en `unitarias`, y 32 en `movil`.
+- **La casilla queda sin marcar** hasta que yo confirme en GitHub los cuatro jobs en verde en `main`, la protección de `main` con los cuatro jobs obligatorios y un pull request de prueba con una prueba rota bloqueado. Es el mismo criterio de T-CI-01 (sesión 7).
+
+**Commits relacionados:** el de T-MOB-02, `c829c00` (§14.5) y el de T-CI-03.
 
 ---
 
