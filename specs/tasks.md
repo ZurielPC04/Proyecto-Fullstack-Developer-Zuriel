@@ -522,7 +522,7 @@ flowchart LR
   - exactamente en el límite se aplica;
   - un centavo más → `422 limite-diario-excedido`;
   - traspasos, depósitos y rechazadas no cuentan;
-  - los cuatro escenarios de medianoche de §6.4 con `RelojFijo` (23:59:59.999999 y 00:00:00).
+  - tres de los cuatro escenarios de medianoche de §6.4 con `RelojFijo` (23:59:59.999999 y 00:00:00): agotar al final del día, día siguiente y exactamente en el límite. El de la pendiente que cruza la medianoche necesita el código y va en T-API-20.
 - **Commit:** `feat(api): T-API-19 límite diario en hora de México [R-6.1, R-6.5, R-6.6]`
 
 ### T-API-20 · Código de un solo uso · `api` · P1
@@ -531,8 +531,9 @@ flowchart LR
 - **Criterios:** R-6.8 a R-6.17
 - **Implementa:** DD-14, DD-25, DD-31, DD-33, D-07
 - **Alcance** (§6.5): pendiente `202` para un tercero por encima del umbral, con HMAC del código (incluye el id de la transferencia) y `ProveedorOtpSimulado`; `POST /api/transferencias/{id}/confirmar` con el orden usuario → transferencia/código → cuentas; intento fallido confirmado en su propia transacción y auditado; `CODIGO_AGOTADO` al tercer fallo; expiración perezosa al confirmar y al consultar; confirmación idempotente.
-- **Verificación:** `-t "R-6.8|R-6.9|R-6.10|R-6.11|R-6.12|R-6.13|R-6.14|R-6.15|R-6.16|R-6.17"`:
+- **Verificación:** `-t "R-6.6|R-6.8|R-6.9|R-6.10|R-6.11|R-6.12|R-6.13|R-6.14|R-6.15|R-6.16|R-6.17"`:
   - `1000000` exacto no pide código;
+  - pendiente creada a las 23:58 y confirmada a las 00:01: cuenta en el día nuevo (R-6.6, cuarto escenario de §6.4);
   - `202` sin mover dinero, con `codigoSimulado`;
   - repetición del `202` sin `codigoSimulado` (DD-25);
   - código correcto con saldo o límite insuficiente al confirmar → `422`;
