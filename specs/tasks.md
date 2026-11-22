@@ -549,7 +549,7 @@ flowchart LR
 - **Criterios:** R-4.16, R-4.18, R-5.4 (cursor con escrituras, se activa al cerrar T-API-22), R-6.4, RNF-08, RNF-24
 - **Implementa:** D-12, DD-36
 - **Alcance** (§14.3): `api/test/concurrencia/` con los cinco escenarios de §14.3 y un pool de 10 conexiones.
-- **Verificación:** `npm run test:integracion -- concurrencia`:
+- **Verificación:** `npm run test:integracion -w api -- concurrencia` (desde la raíz; el script vive en el workspace `api`):
   - 100 simultáneas: `aplicadas × monto + saldo final = saldo inicial`, aplicadas + rechazadas = 100;
   - cruzadas A↔B;
   - límite con dos cuentas;

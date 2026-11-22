@@ -2490,7 +2490,7 @@ Un `500` también se reintenta: no hay forma de saber si la transacción alcanz�
 
 **Preparación.** Un `globalSetup` revierte todas las migraciones de `billetera_test` y las aplica desde cero con el rol dueño, de modo que el esquema es exactamente el de las migraciones y no quedan datos de corridas anteriores. Cada archivo de pruebas vacía las tablas de datos (`TRUNCATE … CASCADE`, conservando Fondeo) y crea sus usuarios. El `globalSetup` y la limpieza **se niegan a correr** (lanzan antes de tocar nada) si la base de la URL no se llama exactamente `billetera_test`, para que una variable mal puesta nunca vacíe otra base. La API de prueba se conecta como `billetera_app`, igual que en producción, con `RelojFijo` cuando la prueba controla la hora y `ProveedorOtpSimulado`.
 
-**Conexión de las pruebas.** `npm run test:integracion -w api` usa su propia configuración de Vitest (`api/vitest.integracion.config.ts`, solo `test/integracion/**`, archivos en serie). `npm test -w api` no la incluye, así que corre sin base. Las URLs salen de dos variables propias de las pruebas, que **no forman parte del esquema de configuración de la API** (§2.4):
+**Conexión de las pruebas.** `npm run test:integracion -w api` usa su propia configuración de Vitest (`api/vitest.integracion.config.ts`, solo `test/integracion/**` y `test/concurrencia/**`, archivos en serie, con el mismo `globalSetup` y las mismas invariantes). `npm test -w api` no la incluye, así que corre sin base. Las URLs salen de dos variables propias de las pruebas, que **no forman parte del esquema de configuración de la API** (§2.4):
 
 | Variable | Rol | Valor por defecto (base local de `init.sql`) |
 |---|---|---|
