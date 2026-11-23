@@ -14,11 +14,17 @@ import { join, relative } from 'node:path';
 const RAIZ = join(import.meta.dirname, '..');
 const leer = (ruta) => readFileSync(join(RAIZ, ruta), 'utf8');
 
-/** Criterios que no se verifican con una prueba con su ID en el título, y por qué. */
+/**
+ * Criterios que no se verifican con una prueba con su ID en el título, y por qué.
+ *
+ * RNF-20 no está exento: su prueba es la de sesión móvil (refresh en el almacén, access solo en
+ * memoria). La parte de "nunca AsyncStorage" no es una prueba con título: la verifica
+ * `npm run lint:verificar-reglas` en el job `calidad`, que comprueba que la regla
+ * `no-restricted-imports` de eslint.config.js reporta `eslint-pruebas/almacenamiento.invalido.ts`
+ * en `mobile/src`.
+ */
 const EXENTOS_DE_PRUEBA = {
-  'RNF-20': 'verificado por CI: job movil (pruebas de sesión e intento con SecureStore simulado)',
   'RNF-22': 'verificado por CI: job unitarias (dinero, clabe y servicios con sus propios IDs)',
-  'RNF-25': 'verificado por CI: job unitarias (flujo de transferencia web con sus propios IDs)',
   'RNF-29': 'verificado por CI: los jobs calidad, unitarias, integracion y movil',
   'RNF-30': 'documentación: docs/aws-deploy.md',
   'RNF-31': 'documentación: README.md',

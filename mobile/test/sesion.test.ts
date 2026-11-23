@@ -36,7 +36,7 @@ async function preparar(respuestaRefresh: () => Promise<Response> | Response) {
 }
 
 describe('sesión móvil', () => {
-  it('DD-24: el login manda cliente "movil" y guarda el refresh del cuerpo en el almacén', async () => {
+  it('DD-24 RNF-20: el login manda cliente "movil", guarda solo el refresh en el almacén y el access queda en memoria', async () => {
     const { almacen, peticiones, sesion } = await preparar(() => tokens('x', REFRESH_2));
     expect(peticiones[0]).toMatchObject({
       metodo: 'POST',
@@ -44,6 +44,8 @@ describe('sesión móvil', () => {
       cuerpo: { correo: 'ana@example.com', contrasena: 'una contraseña larga', cliente: 'movil' },
     });
     expect(almacen.datos.get(LLAVE_REFRESH)).toBe(REFRESH_1);
+    // RNF-20: el access nunca llega al almacén seguro, ni en una llave propia ni dentro de otro valor.
+    expect([...almacen.datos.values()].some((valor) => valor.includes('access-1'))).toBe(false);
     expect(sesion.obtenerAccess()).toBe('access-1');
     expect(sesion.obtenerEstado()).toBe('con-sesion');
   });

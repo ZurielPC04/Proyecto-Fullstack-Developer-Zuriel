@@ -45,7 +45,7 @@ const rechazoPorSaldo = () =>
 const aplicada = () => HttpResponse.json(COMPROBANTE, { status: 201 });
 
 describe('transferencia (ruta /transferir)', () => {
-  it('R-4.11 R-4.20 el envío lleva una llave UUID y los datos congelados, y muestra el comprobante', async () => {
+  it('R-4.11 R-4.20 RNF-25 el envío lleva una llave UUID y los datos congelados, y muestra el comprobante', async () => {
     conDatosDeTransferencia();
     const peticiones = transferenciasResponden(aplicada);
     const usuario = userEvent.setup();
@@ -108,7 +108,7 @@ describe('transferencia (ruta /transferir)', () => {
     expect(peticiones[0]?.cuerpo).toMatchObject({ montoCentavos: 123456 });
   });
 
-  it('R-4.12 un 422 saldo-insuficiente muestra el motivo y ningún comprobante', async () => {
+  it('R-4.12 RNF-25 un 422 saldo-insuficiente muestra el motivo y ningún comprobante', async () => {
     conDatosDeTransferencia();
     transferenciasResponden(rechazoPorSaldo);
     const usuario = userEvent.setup();
@@ -128,7 +128,7 @@ describe('transferencia (ruta /transferir)', () => {
     expect(screen.getByRole('button', { name: 'Nueva transferencia' })).toBeVisible();
   });
 
-  it('R-4.21 un doble clic en "Enviar" produce una sola petición, con el botón ocupado', async () => {
+  it('R-4.21 RNF-25 un doble clic en "Enviar" produce una sola petición, con el botón ocupado', async () => {
     conDatosDeTransferencia();
     const respuesta = puerta();
     const peticiones = transferenciasResponden(async () => {
@@ -156,7 +156,7 @@ describe('transferencia (ruta /transferir)', () => {
     expect(peticiones).toHaveLength(1);
   });
 
-  it('R-4.21 un doble Enter en "Enviar" produce una sola petición', async () => {
+  it('R-4.21 RNF-25 un doble Enter en "Enviar" produce una sola petición', async () => {
     conDatosDeTransferencia();
     const respuesta = puerta();
     const peticiones = transferenciasResponden(async () => {

@@ -173,7 +173,7 @@ describe('pantallas de sesión (design.md §13.2)', () => {
     expect(await axe(document.body)).toHaveNoViolations();
   });
 
-  it('R-1.12 cerrar sesión revoca en la API, borra el intento guardado y la caché, y lleva al login', async () => {
+  it('R-1.12 RNF-25 cerrar sesión revoca en la API, borra el intento guardado y la caché, y lleva al login', async () => {
     sesionValida();
     let logout: Request | undefined;
     servidor.use(
