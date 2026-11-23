@@ -67,6 +67,6 @@ Contraseña de `ana@demo.mx` y `beto@demo.mx`: `demo billetera 2026`.
 
 - [x] La duración es de 5:00 o menos.
 - [x] Se ve el rechazo por saldo insuficiente en la web (0:35) y en la app móvil (3:05).
-- [ ] La recuperación con modo avión termina en el comprobante y en un solo movimiento.
-- [ ] Ningún secreto de `api/.env` aparece en pantalla.
+- [x] La recuperación con modo avión termina en el comprobante y en un solo movimiento.
+- [x] Ningún secreto de `api/.env` aparece en pantalla.
 - [x] El enlace del video queda en la sección "Video" del README.
