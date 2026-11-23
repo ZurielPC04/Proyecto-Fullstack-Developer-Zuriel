@@ -1065,7 +1065,13 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - `DEPOSITO` con la etiqueta "Recepción": rojo en R-5.9.
 - "Reintentar" que no vuelve a pedir: rojo en las pruebas de error de Saldo y de Movimientos.
 
-**Commits relacionados:** el de T-MOB-02, `c829c00` (§14.5), el de T-CI-03 y el de T-MOB-03.
+**Corrección a la IA en T-MOB-02, encontrada en la prueba manual:**
+- **Qué pasó:** con la usuaria demo (`ana@demo.mx`), el login desde un Samsung A34 respondió `401` tres veces. La base tenía a la usuaria, y desde la computadora la API respondió `200` con la contraseña exacta y `401` con un espacio al final o con mayúscula inicial.
+- **Causa:** en `PantallaLogin`, el campo de contraseña no tenía `autoCapitalize="none"`. En React Native, un `TextInput` capitaliza la primera letra por omisión, y ninguno de los dos campos desactivaba el autocorrector. El correo se recorta y se pasa a minúsculas en `shared`, pero la contraseña viaja sin recortar ni normalizar mayúsculas (DD-28), y con `secureTextEntry` el cambio no se ve.
+- **Arreglo:** `autoCapitalize="none"` y `autoCorrect={false}` en los dos campos, con una prueba (`login.test.tsx`) que verifica las dos propiedades en cada campo.
+- **Mutación:** sin `autoCapitalize` en el campo de contraseña, se puso en rojo la prueba de ese campo. Se revirtió y el `sha256sum` volvió a ser idéntico.
+
+**Commits relacionados:** el de T-MOB-02, `c829c00` (§14.5), el de T-CI-03, el de T-MOB-03, `7707408` (casilla de T-CI-03) y el `fix(mobile)` de T-MOB-02.
 
 ---
 

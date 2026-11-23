@@ -52,6 +52,7 @@ export function PantallaLogin({ alVerEstadoServidor }: Props) {
         value={correo}
         onChangeText={setCorreo}
         autoCapitalize="none"
+        autoCorrect={false}
         autoComplete="email"
         keyboardType="email-address"
         editable={!enviando}
@@ -65,6 +66,10 @@ export function PantallaLogin({ alVerEstadoServidor }: Props) {
         style={estilos.campo}
         value={contrasena}
         onChangeText={setContrasena}
+        // DD-28: la contraseña viaja sin recortar ni normalizar mayúsculas; el teclado no debe
+        // capitalizar la primera letra ni autocorregir (un cambio invisible da 401).
+        autoCapitalize="none"
+        autoCorrect={false}
         secureTextEntry
         autoComplete="current-password"
         editable={!enviando}
