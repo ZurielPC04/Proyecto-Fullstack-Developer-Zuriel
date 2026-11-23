@@ -1,5 +1,6 @@
 // Raíz de la app móvil: lee la configuración y cablea las dependencias reales
-// (expo-secure-store y fetch) para la sesión y el cliente de la API.
+// (expo-secure-store, fetch, NetInfo y expo-crypto) para la sesión, el cliente y el motor.
+import * as Crypto from 'expo-crypto';
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import { StyleSheet, Text, View } from 'react-native';
@@ -8,12 +9,22 @@ import { crearSesion } from './auth/sesion';
 import { leerConfig } from './config';
 import type { ContextoApp } from './contexto';
 import { Raiz } from './Raiz';
+import { conexionNetInfo } from './transferencia/conexion';
+import { crearMotor } from './transferencia/motor';
 
 const config = leerConfig();
 
 function crearContexto(apiUrl: string): ContextoApp {
   const sesion = crearSesion({ apiUrl, almacen: SecureStore });
-  return { apiUrl, sesion, cliente: crearCliente({ apiUrl, sesion }) };
+  const cliente = crearCliente({ apiUrl, sesion });
+  const motor = crearMotor({
+    cliente,
+    sesion,
+    almacen: SecureStore,
+    conexion: conexionNetInfo,
+    generarLlave: () => Crypto.randomUUID(),
+  });
+  return { apiUrl, sesion, cliente, motor };
 }
 
 const contexto = config.ok ? crearContexto(config.config.apiUrl) : null;

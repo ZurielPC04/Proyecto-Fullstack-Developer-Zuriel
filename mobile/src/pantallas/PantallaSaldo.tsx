@@ -6,9 +6,9 @@ import { useApp } from '../contexto';
 import { ErrorConReintento } from './ErrorConReintento';
 import { useCarga } from './useCarga';
 
-type Props = { alVerMovimientos: (cuenta: Cuenta) => void };
+type Props = { alVerMovimientos: (cuenta: Cuenta) => void; alTransferir: () => void };
 
-export function PantallaSaldo({ alVerMovimientos }: Props) {
+export function PantallaSaldo({ alVerMovimientos, alTransferir }: Props) {
   const { cliente, sesion } = useApp();
   const cargar = useCallback(
     () => Promise.all([cliente.get('/cuentas'), cliente.get('/limites')]),
@@ -32,6 +32,7 @@ export function PantallaSaldo({ alVerMovimientos }: Props) {
             <TarjetaCuenta key={cuenta.id} cuenta={cuenta} alVerMovimientos={alVerMovimientos} />
           ))}
           <LimiteDelDia limites={carga.datos[1]} />
+          <Button title="Transferir" onPress={alTransferir} />
         </>
       )}
       <Button title="Cerrar sesión" onPress={() => void sesion.cerrarSesion()} />
@@ -39,7 +40,10 @@ export function PantallaSaldo({ alVerMovimientos }: Props) {
   );
 }
 
-function TarjetaCuenta({ cuenta, alVerMovimientos }: { cuenta: Cuenta } & Props) {
+function TarjetaCuenta({
+  cuenta,
+  alVerMovimientos,
+}: { cuenta: Cuenta } & Pick<Props, 'alVerMovimientos'>) {
   return (
     <View style={estilos.tarjeta}>
       <Text style={estilos.titulo}>{cuenta.nombre}</Text>

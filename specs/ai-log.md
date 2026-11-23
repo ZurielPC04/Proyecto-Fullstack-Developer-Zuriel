@@ -1085,6 +1085,34 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - Movimientos pide `limite=20` y muestra "Sin movimientos" en una cuenta vacía.
 - Las fechas salen como "22 nov 2026, 12:31 a.m.". Hermes sí soporta `Intl.DateTimeFormat` con `timeZone: America/Mexico_City`, así que el pendiente de la sesión 26 queda cerrado sin cambiar `formatearFecha`.
 
+**Huecos del plan, aprobados y corregidos en §13.3 antes de T-MOB-04** (un solo `docs(specs)`):
+- **H1. Intento ajeno o irreconocible:** se borra sin enviarlo ni mostrarlo, igual que en la web.
+- **H2. Qué cubre el motor:** la creación, la confirmación y el `GET /transferencias/{id}`. Si se agotan los reintentos de cualquiera de las tres, la app muestra "Estado desconocido" con "Verificar de nuevo".
+- **H3. Un solo refresh por turno:** un segundo `401` en el mismo turno, después de un refresh exitoso, consume el turno, para que la serie siempre termine.
+
+**T-MOB-04 (transferencia con intento y reintentos):**
+- El motor (`transferencia/motor.ts`) es un store externo, igual que la sesión. Recibe inyectados el cliente, la sesión, el almacén, la conexión (NetInfo) y el generador de llaves (`Crypto.randomUUID`).
+- **Orden de escritura:** `iniciar` genera la llave una sola vez y espera a que el intento `{ usuarioId, llave, cuerpo, fase }` quede escrito en SecureStore antes del primer envío. Si la escritura falla, no se envía nada y Confirmar lo dice.
+- **Envío:** cada petición sale por `cliente.cruda`, que no hace el refresh, porque el `401` lo decide el motor en un solo lugar.
+- `usuarioId` es el `sub` del access, que lee `sesion.usuarioActual()` como en la web.
+- **Navegación:** mientras el motor no está inactivo, la raíz monta solo el stack de Estado. El de Saldo no existe, así que no se puede iniciar otra transferencia (R-4.30).
+- **Transferir:** ofrece solo beneficiarios registrados. El monto pasa por `montoTextoACentavos` y el cuerpo por `esquemaTransferencia`.
+- **Un `202`:** ya guarda la fase `confirmacion` antes de mostrar la captura. La captura con su campo llega en T-MOB-05, como se aprobó en el plan.
+- No se agregaron dependencias.
+
+**Correcciones a la IA:**
+- **Temporizadores falsos:** las pruebas del `401` no avanzaban. Con temporizadores falsos, un `setTimeout(0)` creado durante un tick queda a 1 ms, así que avanzar 0 ms no terminaba la escritura del refresh en el almacén simulado.
+  - El almacén simulado ahora termina la escritura con `setImmediate`, que sigue siendo otra tarea del event loop. Las pruebas del motor falsean solo los temporizadores.
+  - Se volvió a correr la mutación de DD-45 de T-MOB-02 (access fijado antes de guardar el refresh) con el almacén nuevo: sigue en rojo, con cinco pruebas, y el `sha256sum` quedó idéntico.
+- **Al depurar, Claude Code corrió `git checkout` sobre `sesion.ts`** y borró el `usuarioActual` sin commit. Lo restauró desde la copia que había hecho antes de instrumentar el archivo. Desde entonces, para depurar copia y restaura el archivo, sin usar `git checkout`.
+- **La mutación (d) quedaba en rojo solo por el texto "falló":** las pruebas usaban la constante de la pantalla, así que otro texto sin "falló" habría pasado. Ahora exigen el texto literal "Estado desconocido".
+
+**Mutaciones de T-MOB-04** (todas en rojo, revertidas con `sha256sum` idéntico):
+- **(a) Llave nueva en cada reintento:** rojo en RNF-26 y en otras cinco pruebas.
+- **(b) Un `401` consume un turno de espera:** rojo en R-4.29 y en la prueba del segundo `401`.
+- **(c) El intento se escribe después de enviar la creación:** rojo en las dos pruebas de R-4.27 del motor, en la de Confirmar y en las de `422` y `404`.
+- **(d) "La transferencia falló" al agotar los reintentos:** rojo en R-4.30 y en R-4.29.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

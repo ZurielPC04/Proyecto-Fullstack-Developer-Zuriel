@@ -1,14 +1,12 @@
 // T-MOB-02: stacks condicionales sin sesión / con sesión (design.md §13.3, DD-03).
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { crearCliente } from '../src/api/cliente';
 import { LLAVE_REFRESH } from '../src/auth/almacen';
-import { crearSesion } from '../src/auth/sesion';
 import { Raiz } from '../src/Raiz';
 import {
-  API,
   REFRESH_1,
   type Registro,
   almacenEnMemoria,
+  armarContexto,
   fetchSimulado,
   problema,
   tokens,
@@ -28,8 +26,7 @@ function montar(inicial: Record<string, string> = {}) {
     if (p.ruta === '/auth/logout') return new Response(null, { status: 204 });
     return problema(404, 'not-found');
   });
-  const sesion = crearSesion({ apiUrl: API, almacen, fetchFn });
-  const contexto = { apiUrl: API, sesion, cliente: crearCliente({ apiUrl: API, sesion, fetchFn }) };
+  const { contexto } = armarContexto(almacen, fetchFn);
   return { almacen, peticiones, contexto };
 }
 

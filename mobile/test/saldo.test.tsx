@@ -10,7 +10,7 @@ async function montar(manejador: Parameters<typeof contextoDePrueba>[0]) {
   const alVerMovimientos = jest.fn();
   await render(
     <ProveedorApp value={prueba.contexto}>
-      <PantallaSaldo alVerMovimientos={alVerMovimientos} />
+      <PantallaSaldo alVerMovimientos={alVerMovimientos} alTransferir={jest.fn()} />
     </ProveedorApp>,
   );
   return { ...prueba, alVerMovimientos };

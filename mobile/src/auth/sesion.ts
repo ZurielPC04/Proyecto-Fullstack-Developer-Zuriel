@@ -72,6 +72,24 @@ export function crearSesion({ apiUrl, almacen, fetchFn = fetch }: DependenciasSe
       return access;
     },
 
+    /**
+     * §13.3 y §13.2: el `sub` del access actual (§5.2), o null si no hay access o no se puede
+     * leer. Lee el payload sin verificar la firma: solo decide de quién es el intento guardado;
+     * la API vuelve a autenticar cada petición.
+     */
+    usuarioActual(): string | null {
+      const payload = access?.split('.')[1];
+      if (!payload) return null;
+      try {
+        const claims = JSON.parse(atob(payload.replaceAll('-', '+').replaceAll('_', '/'))) as {
+          sub?: unknown;
+        };
+        return typeof claims.sub === 'string' && claims.sub !== '' ? claims.sub : null;
+      } catch {
+        return null;
+      }
+    },
+
     obtenerEstado(): EstadoSesion {
       return estado;
     },

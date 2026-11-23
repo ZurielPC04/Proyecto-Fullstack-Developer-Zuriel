@@ -93,6 +93,24 @@ export function crearCliente({ apiUrl, sesion, fetchFn = fetch }: DependenciasCl
   }
 
   return {
+    /**
+     * Una sola petición, sin refresh ni lectura del cuerpo: el motor de transferencias decide
+     * qué hacer con cada status, incluido el `401` (design.md §13.3, DD-45). Devuelve también el
+     * access con el que salió, para que el refresh no rote dos veces (R-1.17).
+     */
+    async cruda(
+      metodo: Metodo,
+      ruta: keyof paths,
+      opciones: OpcionesPeticion = {},
+    ): Promise<{ respuesta: Response; accessUsado: string | null }> {
+      const url = urlApi(
+        apiUrl,
+        sustituirRuta(ruta, opciones.path as Record<string, string> | undefined),
+      );
+      const accessUsado = sesion.obtenerAccess();
+      return { respuesta: await una(metodo, url, opciones, accessUsado), accessUsado };
+    },
+
     get<P extends RutaDe<'get'>>(
       ruta: P,
       opciones?: Opciones<Operacion<P, 'get'>>,
