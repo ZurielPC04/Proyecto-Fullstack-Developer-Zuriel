@@ -168,7 +168,10 @@ Si la red no deja que el teléfono vea la computadora (Wi-Fi de oficina, aislami
 npm test                               # unitarias de shared, api, web y mobile
 npm run db:up                          # requisito de la integración
 npm run test:integracion -w api        # integración y concurrencia contra billetera_test
+npm run trazabilidad                   # cada R- y RNF- tiene prueba y commit (RNF-33)
 ```
+
+`npm run trazabilidad` busca cada `R-` y `RNF-` de `specs/requirements.md` en los títulos de las pruebas y en los mensajes de commit. Exime de prueba solo a los criterios de documentación y de CI (lista y motivo en `scripts/trazabilidad.mjs`) y reporta aparte los criterios de las P2 omitidas.
 
 - Por proyecto: `npm test -w packages/shared`, `npm test -w api`, `npm test -w web`, `npm test -w mobile`.
 - **Filtrar por ID.** Cada prueba lleva en su título los IDs que verifica (DD-46), así que se puede correr solo lo de un criterio:

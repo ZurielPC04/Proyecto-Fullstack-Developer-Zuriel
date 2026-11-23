@@ -23,6 +23,7 @@
     "lint": "eslint .",
     "lint:verificar-reglas": "node scripts/verificar-reglas-lint.mjs",
     "lint:contrato": "redocly lint specs/openapi.yaml",
+    "trazabilidad": "node scripts/trazabilidad.mjs",
     "gen:tipos": "openapi-typescript specs/openapi.yaml -o packages/shared/src/api/openapi.ts --root-types --root-types-no-schema-prefix",
     "pretypecheck": "npm run build:shared",
     "typecheck": "npm run typecheck --workspaces --if-present",

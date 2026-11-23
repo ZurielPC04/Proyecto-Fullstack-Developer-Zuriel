@@ -1148,14 +1148,52 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Verificación del bloque:** `npm test -w mobile` con 95 pruebas en 14 suites, `typecheck`, `eslint .`, `prettier --check` y `lint:verificar-reglas` en verde.
 
-**Pendiente: pruebas manuales en el teléfono:**
-- Transferencia normal.
-- Más de $10,000 con código.
-- API detenida a mitad del envío.
-- Cerrar la app en la pantalla del código y reabrirla.
-- Selector de apps sin saldos.
+**Pruebas manuales en el teléfono:** la transferencia normal y la de más de $10,000 con código quedaron aprobadas (sesión 28). La API detenida a mitad del envío, cerrar la app en la pantalla del código y reabrirla, y el selector de apps sin saldos se muestran en el video (`docs/video.md`).
 
-**Commits relacionados:** `996d7b2` (prueba manual de T-MOB-03), `35427e3` (H1 a H3 en §13.3), `961f451` (T-MOB-04), `a3c3ea4` (T-MOB-05) y el de T-MOB-06.
+**Commits relacionados:** `996d7b2` (prueba manual de T-MOB-03), `35427e3` (H1 a H3 en §13.3), `961f451` (T-MOB-04), `a3c3ea4` (T-MOB-05) y `c4a16b2` (T-MOB-06).
+
+### Sesión 28 — 2026-11-23 · Entrega: T-DOC-03, T-DOC-02, T-DOC-04 y guion de T-DOC-05
+
+**Herramienta:** Claude Code (Opus 5.5). Claude Code leyó §10 de `tasks.md`, `requirements.md` §11, RNF-27 y RNF-30 a RNF-33, y `design.md` §1.3, §14.4, §15.2, §15.3 y DD-46. Propuso un solo plan con el índice de cada documento; lo aprobé con dos ajustes. Un commit por tarea y sin push.
+
+**Pruebas manuales en el teléfono (las hice yo, aprobadas)**, con Expo Go, la API en la LAN y la usuaria demo `ana@demo.mx`:
+- **Transferencia normal** (≤ $10,000): comprobante y saldo actualizado.
+- **Transferencia con código** (> $10,000): con un código incorrecto, la captura responde "Te quedan 2 intentos"; con el correcto, la transferencia queda aplicada y se ve el comprobante.
+- **Saldos y límite exactos al centavo:** después de transferir $24,500.00 a Beto, `Principal` muestra **$55,500.00** ($80,000.00 − $24,500.00) y el límite diario **$24,500.00 consumido**, iguales a los de la web.
+- **Hermes:** los montos salen con `formatearMXNSinIntl` y las fechas con `Intl.DateTimeFormat` en `America/Mexico_City`, sin errores de BigInt ni de zona horaria (cierra lo encontrado en las sesiones 25 y 27).
+
+**Decisión de corte (tasks.md §10).** Al terminar la Fase 6 decidí **omitir las tres P2**: T-API-23 (estado de cuenta CSV), T-WEB-08 (botón de descarga) y T-MOB-07 (desbloqueo biométrico). Quedan sin marcar en §2, anotadas como omitidas, y el README las lista en "qué haría con más tiempo" con los criterios que quedan sin cubrir (R-B1.1 a R-B1.6). `esquemaQueryEstadoCuenta` y `centavosATextoDecimal` ya existían en `shared` con sus pruebas, así que la trazabilidad solo reporta sin prueba R-B1.3, R-B1.4 y R-B1.6.
+
+| Propuesta | Decisión | Motivo |
+|---|---|---|
+| Dejar `docs/video.md` sin commit hasta tener el enlace | Aceptada | Así el mensaje de T-DOC-05 no se usa antes de tiempo: se cierra en un solo commit con el guion, el enlace y su casilla |
+| En el README, la cadena de producción de `npm audit` como "typecheck → glob → minimatch" (mi texto del prompt) | Corregida | Claude Code la contrastó con la sesión 16: la cadena es `typeorm` → `glob` → `minimatch`, no alcanzable por la prueba de DD-05 |
+| Guion móvil sin el saldo insuficiente | Corregido | T-DOC-05 exige que el video muestre el rechazo por saldo insuficiente en web **y** en móvil; se agregó con Beto en el teléfono |
+| Faltantes de trazabilidad no P2 | (a) y (b) combinadas | (a) R-1.5, R-2.2, R-2.3, R-3.6, R-3.8 y R-4.32: el ID va solo en el título de la prueba que verifica el criterio, en un commit `test:` de T-DOC-04 con la tabla ID → archivo → prueba en el cuerpo. (b) RNF-20, RNF-22 y RNF-25 quedan como excepciones justificadas en el script ("verificado por CI"), igual que los criterios de documentación |
+
+**Correcciones a la IA:**
+- La primera simulación de la trazabilidad solo reconocía `it(` y `test(`, y reportó RNF-13, R-B1.1 y R-B1.2 sin prueba. Tenían prueba con `it.each(...)(título)`. El script final reconoce `.each`, los modificadores (`.only`, `.skip`) y los rangos "R-4.1 a R-4.19" en títulos y commits.
+- Le pedí que no maquillara la trazabilidad. Antes del commit mostró la tabla: de los 7 IDs, solo R-2.2 y R-4.32 necesitaban el ID en un título. R-1.5, R-2.3, R-3.6 y R-3.8 ya tenían prueba con su ID y solo les faltaba un commit que los citara, y RNF-13 no necesitaba cambios. R-4.32 tiene tres ramas (201, 202 y 422) y lleva el ID en las tres pruebas que las verifican. R-2.2 va en la prueba que compara `saldo_centavos` con `SUM(asientos)`, no en el `it.each` de invariantes, para no etiquetar las otras dos filas.
+- Le pedí que todo commit citara su tarea, también el de los títulos de las pruebas (`test: T-DOC-04 …`).
+- `style(api)`: antes del commit, Claude Code verificó que los 6 archivos de Prettier solo cambiaban espacios, saltos de línea, comas finales y un `;`, comparando los tokens sin espacios contra `HEAD`.
+
+**Verificación del cierre:**
+- `npm test`: `shared` 292, `api` 203, `web` 82 y `mobile` 95 pruebas en verde. `npm run test:integracion -w api`: 244 pruebas en 32 archivos.
+- `npm run trazabilidad`: 140 criterios; 7 exentos de prueba con su motivo; reporta solo R-B1.3, R-B1.4 y R-B1.6 como P2 omitidas, que coinciden con el README; termina en 0.
+
+**Pendiente:** T-DOC-05. Grabar el video con el guion de `docs/video.md` (correr `npm run db:seed` antes) y enlazarlo en el README. Comprobar en GitHub, después del push, que el diagrama de `docs/aws-deploy.md` renderiza.
+
+## Cierre de la implementación
+
+**Resultado.** Todas las tareas P1 de `tasks.md` quedaron cerradas, cada una con su commit, salvo T-DOC-05, que espera el enlace del video. Las tres P2 se omitieron en la línea de corte. El historial conserva las specs antes que la implementación, sin squash, y `npm run trazabilidad` comprueba la cadena requerimiento → prueba → commit (RNF-33).
+
+**Cómo se usó la IA.** En todas las sesiones de implementación, Claude Code leyó las secciones de la spec de cada bloque y propuso un solo plan antes de escribir. Yo lo aprobé o lo ajusté. Cuando el plan encontró un hueco, la spec se corrigió primero en su propio commit `docs(specs)` (por ejemplo, H1 a H3 de la sesión 27). Cada tarea con lógica tuvo pruebas de mutación: un cambio deliberado del código debía dejar las pruebas en rojo, y se revertía comprobando el `sha256sum`.
+
+**Propuestas rechazadas o corregidas, por tema** (el detalle está en cada sesión):
+- **Dinero:** la tabla "Propuestas inseguras o incorrectas con el dinero" reúne las seis propuestas de la IA que ponían en riesgo la integridad del dinero (aritmética con `/ 100`, confirmación sin idempotencia, clasificación del traspaso, reanudación que reenviaba la creación, `now()` en lugar de `clock_timestamp()`), con su corrección.
+- **Dependencias:** versiones exactas con 2 semanas o más; la excepción de las 54 transitivas de Expo se aceptó con mitigaciones verificadas (sesión 25), no a ciegas. Los avisos de `npm audit` se aceptaron solo con su análisis: en desarrollo, `npm audit fix --force` bajaba `typescript-eslint` y rompía el lint (sesión 7); en producción, la cadena `typeorm` → `glob` → `minimatch` no es alcanzable y la protege la prueba de DD-05 (sesión 16).
+- **Proceso:** en la sesión 27 un `git checkout` borró trabajo sin commit; desde entonces `git checkout`, `git restore`, `git clean`, `git stash` y `git reset --hard` están en la lista `deny` de Claude Code, igual que `rm -rf` y `git push`, y las mutaciones se revierten solo con Edit y `sha256sum`.
+- **Specs que ganaron:** cuando el código y la spec chocaron, se cambió el código; cuando la spec tenía un hueco real, se corrigió la spec antes de seguir.
 
 ---
 
