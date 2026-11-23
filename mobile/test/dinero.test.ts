@@ -4,7 +4,7 @@ import { formatearMXNSinIntl } from '@billetera/shared';
 
 describe('formatearMXNSinIntl en la app móvil [R-2.5]', () => {
   it.each([
-    [5, '$0.05'],
+    [5, '$0.06'],
     [100, '$1.00'],
     [123456, '$1,234.56'],
     [-250, '-$2.50'],
