@@ -1184,9 +1184,11 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 **Pendiente:** T-DOC-05. Grabar el video con el guion de `docs/video.md` (correr `npm run db:seed` antes) y enlazarlo en el README. Comprobar en GitHub, después del push, que el diagrama de `docs/aws-deploy.md` renderiza.
 
+**Cierre de T-DOC-05 (2026-11-23).** Grabé el video con el guion de `docs/video.md` y lo subí a Google Drive (MP4, acceso con el enlace). Claude Code comprobó con los metadatos de Drive que el archivo existe y es accesible con el enlace; la duración y el contenido no vienen en los metadatos, así que la verificación de la tarea (≤ 5:00 y rechazo por saldo insuficiente en web y en móvil) la hice yo al revisar el video. Un solo commit con el guion, el enlace en la sección "Video" del README y la casilla de `tasks.md`, como se acordó al dejar `docs/video.md` sin commit. `npm run trazabilidad` sigue terminando en 0.
+
 ## Cierre de la implementación
 
-**Resultado.** Todas las tareas P1 de `tasks.md` quedaron cerradas, cada una con su commit, salvo T-DOC-05, que espera el enlace del video. Las tres P2 se omitieron en la línea de corte. El historial conserva las specs antes que la implementación, sin squash, y `npm run trazabilidad` comprueba la cadena requerimiento → prueba → commit (RNF-33).
+**Resultado.** Todas las tareas P1 de `tasks.md` quedaron cerradas, cada una con su commit; T-DOC-05 se cerró al final con el enlace del video. Las tres P2 se omitieron en la línea de corte. El historial conserva las specs antes que la implementación, sin squash, y `npm run trazabilidad` comprueba la cadena requerimiento → prueba → commit (RNF-33).
 
 **Cómo se usó la IA.** En todas las sesiones de implementación, Claude Code leyó las secciones de la spec de cada bloque y propuso un solo plan antes de escribir. Yo lo aprobé o lo ajusté. Cuando el plan encontró un hueco, la spec se corrigió primero en su propio commit `docs(specs)` (por ejemplo, H1 a H3 de la sesión 27). Cada tarea con lógica tuvo pruebas de mutación: un cambio deliberado del código debía dejar las pruebas en rojo, y se revertía comprobando el `sha256sum`.
 

@@ -209,7 +209,9 @@ El detalle está en `specs/ai-log.md`, sesión 25 (lista de los 54 y verificacio
 
 ## Video
 
-📹 **Video de la entrega:** _(enlace pendiente)_
+📹 **Video de la entrega:** <https://drive.google.com/file/d/1RowZEJvs8dvkY9VtH1nE39tCrkN-5IFf/view?usp=sharing>
+
+Guion y preparación en [`docs/video.md`](docs/video.md).
 
 ## Qué haría con más tiempo
 
