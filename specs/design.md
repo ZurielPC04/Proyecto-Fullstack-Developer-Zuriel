@@ -2679,6 +2679,12 @@ La raíz monta **un solo stack a la vez** según el estado de la sesión y del i
 
 Un `500` también se reintenta: no hay forma de saber si la transacción alcanzó a confirmarse, y repetir con la misma llave es seguro (D-03).
 
+Precisiones del motor (corrección de T-MOB-04):
+
+- **Qué peticiones cubre.** El motor aplica igual a `POST /transferencias`, `POST /transferencias/{id}/confirmar` y `GET /transferencias/{id}`. Si falla cualquiera de las tres y se agotan los reintentos, la pantalla Estado muestra "Estado desconocido" con "Verificar de nuevo", que repite la misma petición: la creación con la misma llave, la confirmación con el mismo código o el `GET`.
+- **Un solo refresh por turno.** El `401` no consume turno solo la primera vez en cada turno. Si después de un refresh exitoso vuelve a llegar un `401` en el mismo turno, cuenta como fallo reintentable y consume el turno. Así, la serie siempre termina. Es la misma regla de la web: un `401` que el refresh no resolvió es un resultado incierto (§13.2).
+- **Intento ajeno o irreconocible.** Al reanudar, un intento cuyo `usuarioId` no coincide con el `sub` del access actual, que no lo trae o cuyo contenido no se puede leer se **borra sin enviarlo ni mostrarlo**, igual que en la web (§13.2). La app sigue al saldo. Si la sesión venció sin cerrarse y entra otro usuario en el mismo teléfono, ese usuario no ve ni reanuda el intento anterior. El dueño ve el resultado real en su historial.
+
 **Contenido oculto en segundo plano** (RNF-21; cierra la rama "móvil en segundo plano" del interrogatorio):
 
 - Un componente en la raíz escucha `AppState`. Cuando el estado deja de ser `active` (`inactive` en iOS al abrir el selector de apps, `background` en ambos), pinta una capa opaca a pantalla completa con el logo, por encima de toda la navegación. Además, marca el contenido de abajo como oculto para la accesibilidad, para que no lo lea un lector de pantalla.
