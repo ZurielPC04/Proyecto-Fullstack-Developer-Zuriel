@@ -66,7 +66,7 @@ afterAll(async () => {
 });
 
 describe('migración TransferenciaAsiento: humo', () => {
-  it('RNF-07 D-01 D-02: un FONDEO correcto deja el saldo esperado y los asientos suman cero', async () => {
+  it('RNF-07 R-2.2 D-01 D-02: un FONDEO correcto deja el saldo igual a la suma de sus asientos y los asientos suman cero', async () => {
     await cliente.query('BEGIN');
     const {
       rows: [usuario],

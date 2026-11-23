@@ -212,7 +212,7 @@ describe('el 202 de un reintento [DD-32]', () => {
     expect(e.almacen.datos.has(LLAVE_INTENTO)).toBe(false);
   });
 
-  it('R-6.18: el primer 202 del intento lleva directo a la captura, ya en fase confirmacion', async () => {
+  it('R-6.18 R-4.32: el primer 202 del intento lleva directo a la captura, ya en fase confirmacion', async () => {
     const e = await escenario(respuestas(Response.json(PENDIENTE, { status: 202 })));
     await hacer(() => e.contexto.motor.iniciar(CUERPO));
     expect(await screen.findByText('Confirma con tu código')).toBeTruthy();

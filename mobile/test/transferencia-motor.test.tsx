@@ -23,7 +23,7 @@ function sinFallo() {
 }
 
 describe('motor de reintentos [R-4.28, RNF-26]', () => {
-  it('RNF-26: falla dos veces y a la tercera responde 201; las tres llevan la misma llave', async () => {
+  it('RNF-26 R-4.32: falla dos veces y a la tercera responde 201; las tres llevan la misma llave, se muestra el comprobante y se borra el intento', async () => {
     const e = await escenario(respuestas('red', 'red', aplicada()));
     await hacer(() => e.contexto.motor.iniciar(CUERPO));
 
@@ -186,7 +186,7 @@ describe('motor de reintentos [R-4.28, RNF-26]', () => {
     expect(await screen.findByText('Transferencia aplicada')).toBeTruthy();
   });
 
-  it('R-4.12: un 422 muestra el motivo sin comprobante y borra el intento', async () => {
+  it('R-4.12 R-4.32: un 422 muestra el motivo sin comprobante y borra el intento', async () => {
     const e = await escenario(respuestas(problema(422, 'saldo-insuficiente')));
     await hacer(() => e.contexto.motor.iniciar(CUERPO));
     expect(await screen.findByText('Transferencia rechazada')).toBeTruthy();
