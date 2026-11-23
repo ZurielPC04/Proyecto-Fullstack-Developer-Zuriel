@@ -1047,6 +1047,11 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - `movil` corre `npm ci`, compila `shared` y corre `npm test -w mobile`.
 - `actionlint` 1.7.12 (imagen local de Docker) sin errores. Los pasos de los dos jobs se reprodujeron en local: `shared` 292, `api` 203 y `web` 82 en `unitarias`, y 32 en `movil`.
 - **La casilla queda sin marcar** hasta que yo confirme en GitHub los cuatro jobs en verde en `main`, la protección de `main` con los cuatro jobs obligatorios y un pull request de prueba con una prueba rota bloqueado. Es el mismo criterio de T-CI-01 (sesión 7).
+- **Verificado en GitHub (lo hice yo):**
+  - Los cuatro jobs (`calidad`, `unitarias`, `integracion` y `movil`) corrieron en verde en `main`.
+  - Creé la protección de `main` con los cuatro como checks obligatorios (Required).
+  - El pull request de prueba #1, con una prueba rota en `mobile`, quedó bloqueado: `movil` en rojo y el merge deshabilitado. Lo cerré sin fusionar y borré la rama.
+  - Con eso, la casilla de T-CI-03 se marcó en un commit aparte.
 
 **T-MOB-03 (saldo y movimientos):**
 - **Saldo:** pide `GET /cuentas` y `GET /limites`. Muestra cada cuenta con su saldo y el límite disponible, lo consumido y el límite del día tal como llegan de la API, sin recalcular (R-6.7).
