@@ -136,7 +136,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 
 **Fase 8 · Entrega**
 
-- [ ] T-DOC-02 · `docs` · P1 · `README.md`
+- [x] T-DOC-02 · `docs` · P1 · `README.md`
 - [x] T-DOC-03 · `docs` · P1 · `docs/aws-deploy.md`
 - [ ] T-DOC-04 · `docs` · P1 · Revisión de trazabilidad y cierre de `ai-log.md`
 - [ ] T-DOC-05 · `docs` · P1 · Video de la entrega
