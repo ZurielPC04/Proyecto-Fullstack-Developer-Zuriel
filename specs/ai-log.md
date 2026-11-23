@@ -1075,6 +1075,18 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 
 ---
 
+### Sesión 27 — 2026-11-22 · Implementación de T-MOB-04 a T-MOB-06 (transferencia, reanudación y privacidad en móvil)
+
+**Herramienta:** Claude Code (Opus 5.5). Claude Code leyó §6.2, §12.7, §13.2, §13.3, D-17, DD-25, DD-32, DD-44, DD-45 y R-4.26 a R-4.33, y propuso un solo plan para las tres tareas, con tres huecos (H1 a H3). Lo aprobé una vez, completo. Un commit por tarea y sin push.
+
+**Prueba manual de T-MOB-03 (la hice yo, aprobada):** en el teléfono, con Expo Go y la API en la LAN:
+- El login entra con la usuaria demo.
+- Saldo muestra las cuentas y el límite disponible del día.
+- Movimientos pide `limite=20` y muestra "Sin movimientos" en una cuenta vacía.
+- Las fechas salen como "22 nov 2026, 12:31 a.m.". Hermes sí soporta `Intl.DateTimeFormat` con `timeZone: America/Mexico_City`, así que el pendiente de la sesión 26 queda cerrado sin cambiar `formatearFecha`.
+
+---
+
 ## Propuestas inseguras o incorrectas con el dinero
 
 Registro específico de lo que la IA propuso y era riesgoso para la integridad del dinero.
