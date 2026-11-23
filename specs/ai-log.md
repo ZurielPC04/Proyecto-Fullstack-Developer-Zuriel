@@ -1136,6 +1136,27 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - **(b) No se compara `usuarioId`:** rojo en "el intento de otro usuario no se envía y se borra".
 - **(c) Un `202` de reintento muestra el código sin consultar el `GET`:** rojo en las cuatro pruebas de DD-32.
 
+**T-MOB-06 (ocultar contenido en segundo plano):**
+- **Dependencia:** `expo-screen-capture` 58.0.6, la versión exacta de `bundledNativeModules` de expo 58.0.23, publicada el 2026-10-21, antes del corte de dos semanas. En el lock solo cambió ese paquete.
+- **Capa de privacidad:** `CapaPrivacidad` envuelve toda la app en `App.tsx`, incluida la pantalla de error de configuración. Escucha `AppState`; con `inactive` o `background` pinta una capa opaca con el logo y oculta el contenido de abajo para la accesibilidad (`accessibilityElementsHidden` y `importantForAccessibility="no-hide-descendants"`). No lee ninguna variable.
+- **Bloqueo de capturas:** `debeBloquearCapturas` solo desactiva el bloqueo con el valor `false`; si la variable falta o trae otro valor, bloquea. `App.tsx` llama a `preventScreenCaptureAsync` al cargar. Un fallo del módulo nativo no detiene la app.
+- **Corrección a la IA en las pruebas:** las primeras pruebas que cargan `App.tsx` usaban `require()`, que el lint prohíbe, y después `import()`, que Jest no soporta sin `--experimental-vm-modules`. Quedaron con `jest.isolateModules` y `jest.requireActual`.
+
+**Mutaciones de T-MOB-06** (todas en rojo, revertidas con `sha256sum` idéntico):
+- **(a) La capa depende de `EXPO_PUBLIC_BLOQUEAR_CAPTURAS`:** rojo en "al pasar a inactive pinta la capa y los saldos no son accesibles", que corre con la variable en `false`.
+- **(b) Con la variable ausente no se llama a `preventScreenCaptureAsync`:** rojo en tres pruebas, incluida la que carga `App.tsx` sin la variable.
+
+**Verificación del bloque:** `npm test -w mobile` con 95 pruebas en 14 suites, `typecheck`, `eslint .`, `prettier --check` y `lint:verificar-reglas` en verde.
+
+**Pendiente: pruebas manuales en el teléfono:**
+- Transferencia normal.
+- Más de $10,000 con código.
+- API detenida a mitad del envío.
+- Cerrar la app en la pantalla del código y reabrirla.
+- Selector de apps sin saldos.
+
+**Commits relacionados:** `996d7b2` (prueba manual de T-MOB-03), `35427e3` (H1 a H3 en §13.3), `961f451` (T-MOB-04), `a3c3ea4` (T-MOB-05) y el de T-MOB-06.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

@@ -122,7 +122,7 @@ Las tres tareas P2 (T-API-23, T-WEB-08 y T-MOB-07) están juntas en la Fase 7, d
 - [x] T-MOB-03 · `mobile` · P1 · Saldo y últimos 20 movimientos
 - [x] T-MOB-04 · `mobile` · P1 · Transferencia con intento y reintentos
 - [x] T-MOB-05 · `mobile` · P1 · Reanudación, código y fase de confirmación
-- [ ] T-MOB-06 · `mobile` · P1 · Ocultar contenido en segundo plano
+- [x] T-MOB-06 · `mobile` · P1 · Ocultar contenido en segundo plano
 
 > ### ✂ Línea de corte
 >
