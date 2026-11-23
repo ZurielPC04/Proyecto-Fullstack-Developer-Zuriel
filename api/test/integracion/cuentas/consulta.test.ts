@@ -28,7 +28,8 @@ type App = AppReal['app'];
 
 async function listar(app: App, usuarioId?: string) {
   let peticion = request(app).get('/api/cuentas');
-  if (usuarioId !== undefined) peticion = peticion.set('Authorization', await autorizacion(usuarioId));
+  if (usuarioId !== undefined)
+    peticion = peticion.set('Authorization', await autorizacion(usuarioId));
   const respuesta = await peticion;
   validarRespuesta(respuesta, 'get', '/cuentas');
   return respuesta;
@@ -67,7 +68,12 @@ describe('GET /api/cuentas (T-API-15)', () => {
     const clabes = await clabesDe(ana.usuarioId);
     expect(respuesta.body).toEqual({
       items: [
-        { id: ana.principalId, nombre: 'Principal', clabe: clabes['Principal'], saldoCentavos: 123_456 },
+        {
+          id: ana.principalId,
+          nombre: 'Principal',
+          clabe: clabes['Principal'],
+          saldoCentavos: 123_456,
+        },
         { id: ana.ahorroId, nombre: 'Ahorro', clabe: clabes['Ahorro'], saldoCentavos: 0 },
       ],
     });

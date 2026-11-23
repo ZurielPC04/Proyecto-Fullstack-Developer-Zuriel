@@ -55,7 +55,9 @@ const eventosDe = (usuarioId: string) =>
 
 describe('POST /api/auth/registro (T-API-12)', () => {
   it('R-1.1 R-1.2 DD-24: crea usuario, Principal y Ahorro con CLABE válida y el fondeo de bienvenida; responde 201 { id, correo } sin sesión', async () => {
-    const { app } = await appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000_000 } });
+    const { app } = await appReal(dataSource, {
+      config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000_000 },
+    });
     const correo = correoNuevo();
 
     const respuesta = await registrar(app, {
@@ -168,7 +170,9 @@ describe('POST /api/auth/registro (T-API-12)', () => {
   );
 
   it('R-1.3 DD-40: un fallo forzado después de crear las cuentas y el fondeo no deja nada', async () => {
-    const { app } = await appReal(dataSource, { config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000_000 } });
+    const { app } = await appReal(dataSource, {
+      config: { FONDEO_BIENVENIDA_CENTAVOS: 1_000_000 },
+    });
     // El evento usuario-registrado se inserta después de las cuentas y del fondeo (§12.1).
     // Idempotente: si una corrida anterior murió antes del finally, la función ya existe.
     await ejecutar('dueno', async (c) => {

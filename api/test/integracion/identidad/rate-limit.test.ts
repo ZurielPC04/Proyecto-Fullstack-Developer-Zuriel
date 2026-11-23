@@ -90,11 +90,7 @@ describe('rate limit de registro (T-API-14)', () => {
     }
 
     const correo = correoNuevo();
-    const falsificada = await registrar(
-      app,
-      { correo, contrasena: CONTRASENA },
-      '203.0.113.77',
-    );
+    const falsificada = await registrar(app, { correo, contrasena: CONTRASENA }, '203.0.113.77');
 
     esperarDemasiadas(falsificada, 5);
     expect(await usuariosConCorreo(correo)).toBe(0);
@@ -137,7 +133,13 @@ describe('rate limit de login (T-API-14)', () => {
       expect((await registrar(app, { correo: c, contrasena: CONTRASENA })).status).toBe(201);
     }
 
-    const variantes = [correo, correo.toUpperCase(), `  ${correo} `, ` ${correo.toUpperCase()}`, correo];
+    const variantes = [
+      correo,
+      correo.toUpperCase(),
+      `  ${correo} `,
+      ` ${correo.toUpperCase()}`,
+      correo,
+    ];
     for (const variante of variantes) {
       const respuesta = await login(app, {
         correo: variante,

@@ -18,9 +18,7 @@ export interface OpcionesAppReal {
    * Si se pasa, reemplaza a crearModulos: recibe las dependencias ya armadas. Puede devolver
    * routers o promesas de router (p. ej. `crearModuloIdentidad(deps, …)`); se esperan todas.
    */
-  modulos?: (
-    dependencias: DependenciasApp,
-  ) => (Router | Promise<Router>)[] | Promise<Router[]>;
+  modulos?: (dependencias: DependenciasApp) => (Router | Promise<Router>)[] | Promise<Router[]>;
 }
 
 /**

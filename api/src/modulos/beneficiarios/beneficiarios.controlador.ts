@@ -1,7 +1,10 @@
 import type { Request, Response } from 'express';
 import type { DatosValidados } from '../../plataforma/http/validar.js';
 import type { BeneficiarioPropio, CasosUsoBeneficiarios } from './beneficiarios.casos-uso.js';
-import type { esquemasAltaBeneficiario, esquemasObtenerBeneficiario } from './beneficiarios.rutas.js';
+import type {
+  esquemasAltaBeneficiario,
+  esquemasObtenerBeneficiario,
+} from './beneficiarios.rutas.js';
 
 /** `autenticar` va antes en la ruta: sin `usuarioId` es un error de composición. */
 function usuarioDe(req: Request): string {

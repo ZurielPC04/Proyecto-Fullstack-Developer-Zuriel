@@ -30,7 +30,8 @@ type App = AppReal['app'];
 
 async function alta(app: App, usuarioId: string | undefined, cuerpo: object) {
   let peticion = request(app).post('/api/beneficiarios');
-  if (usuarioId !== undefined) peticion = peticion.set('Authorization', await autorizacion(usuarioId));
+  if (usuarioId !== undefined)
+    peticion = peticion.set('Authorization', await autorizacion(usuarioId));
   const respuesta = await peticion.send(cuerpo);
   validarRespuesta(respuesta, 'post', '/beneficiarios');
   return respuesta;
@@ -62,7 +63,13 @@ async function clabeDe(cuentaId: string): Promise<string> {
 }
 
 const beneficiariosDe = (usuarioId: string) =>
-  consultarComoDueno<{ id: string; cuenta_id: string; nombre: string; alias: string; clabe: string }>(
+  consultarComoDueno<{
+    id: string;
+    cuenta_id: string;
+    nombre: string;
+    alias: string;
+    clabe: string;
+  }>(
     'SELECT id, cuenta_id, nombre, alias, clabe FROM beneficiario WHERE usuario_id = $1 ORDER BY creado_en',
     [usuarioId],
   );
@@ -243,7 +250,11 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
     const clabe = await clabeDe(beto.ahorroId);
 
     for (const usuario of [uno, dos]) {
-      const respuesta = await alta(app, usuario.usuarioId, { nombre: 'Beto', alias: 'beto', clabe });
+      const respuesta = await alta(app, usuario.usuarioId, {
+        nombre: 'Beto',
+        alias: 'beto',
+        clabe,
+      });
       expect(respuesta.status).toBe(201);
     }
   });
@@ -252,7 +263,11 @@ describe('POST /api/beneficiarios (T-API-16)', () => {
     const { app } = await appReal(dataSource);
     const clabe = await clabeDe(ana.ahorroId);
 
-    const respuesta = await alta(app, ana.usuarioId, { nombre: 'Mi ahorro', alias: 'ahorro', clabe });
+    const respuesta = await alta(app, ana.usuarioId, {
+      nombre: 'Mi ahorro',
+      alias: 'ahorro',
+      clabe,
+    });
 
     expect(respuesta.status).toBe(201);
     expect(respuesta.body).toEqual({
@@ -323,8 +338,20 @@ describe('GET /api/beneficiarios y /api/beneficiarios/{beneficiarioId} (T-API-16
     expect(respuesta.headers['cache-control']).toBe('no-store');
     expect(respuesta.body).toEqual({
       items: [
-        { id: expect.any(String), nombre: 'Mi ahorro', alias: 'Ahorro', clabe: clabeAhorroAna, esCuentaPropia: true },
-        { id: expect.any(String), nombre: 'Roberto', alias: 'zeta', clabe: clabeBeto, esCuentaPropia: false },
+        {
+          id: expect.any(String),
+          nombre: 'Mi ahorro',
+          alias: 'Ahorro',
+          clabe: clabeAhorroAna,
+          esCuentaPropia: true,
+        },
+        {
+          id: expect.any(String),
+          nombre: 'Roberto',
+          alias: 'zeta',
+          clabe: clabeBeto,
+          esCuentaPropia: false,
+        },
       ],
     });
   });
