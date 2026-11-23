@@ -1113,6 +1113,29 @@ Casos borde del enunciado: doble clic (D-16), red perdida en móvil (D-17), redo
 - **(c) El intento se escribe después de enviar la creación:** rojo en las dos pruebas de R-4.27 del motor, en la de Confirmar y en las de `422` y `404`.
 - **(d) "La transferencia falló" al agotar los reintentos:** rojo en R-4.30 y en R-4.29.
 
+**T-MOB-05 (reanudación, código y fase de confirmación):**
+- **Al abrir la app:** al entrar con sesión, la raíz muestra "Resolviendo transferencia" mientras `motor.reanudar()` lee SecureStore. El stack con Saldo no se monta hasta que eso termina, así que Saldo no pide `/cuentas` antes de resolver el intento (R-4.31).
+- **Lectura del intento:** `interpretarIntento` valida el intento con `esquemaTransferencia` de shared. Si es de otro usuario, no trae usuario o está dañado, devuelve null y el motor lo borra sin enviarlo (H1).
+- **Según la fase:**
+  - `creacion`: reenvía la creación con la misma llave.
+  - `confirmacion` con código en vuelo: reenvía la confirmación con ese código.
+  - `confirmacion` sin código: consulta `GET /transferencias/{id}`.
+  - En fase `confirmacion`, la creación tampoco sale por error: `crear` revisa la fase.
+- **Un `202`:**
+  - Cualquier `202` guarda primero la fase `confirmacion`.
+  - Solo la respuesta al primer envío de un intento recién creado lleva directo a la captura. Cualquier otro `202` consulta el `GET` y muestra el estado real: comprobante, rechazo con su motivo o captura con el `codigoExpiraEn` real (DD-32).
+  - `codigoSimulado` se toma del intento guardado cuando la repetición no lo trae (DD-25).
+- **Captura del código:**
+  - Valida con `esquemaConfirmacion` y guarda el código en el intento antes de enviar la confirmación.
+  - Un `codigo-incorrecto` quita el código del intento y vuelve a la captura con los intentos restantes (DD-33).
+  - Cualquier otro `422` cierra el intento. La siguiente transferencia lleva una llave nueva (R-6.15).
+- **Reintentos:** la confirmación y el `GET` usan el mismo motor de reintentos que la creación (H2).
+
+**Mutaciones de T-MOB-05** (todas en rojo, revertidas con `sha256sum` idéntico):
+- **(a) En fase `confirmacion` se reenvía la creación:** se quitó la revisión de fase en `crear` y se envió a `crear` el intento sin código. Rojo en las dos pruebas de "nunca la creación".
+- **(b) No se compara `usuarioId`:** rojo en "el intento de otro usuario no se envía y se borra".
+- **(c) Un `202` de reintento muestra el código sin consultar el `GET`:** rojo en las cuatro pruebas de DD-32.
+
 ---
 
 ## Propuestas inseguras o incorrectas con el dinero

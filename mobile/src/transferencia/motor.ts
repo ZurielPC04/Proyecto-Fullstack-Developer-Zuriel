@@ -1,12 +1,18 @@
 // Motor de la transferencia móvil (design.md §13.3 "Motor de reintentos", §6.2, §12.7, D-17,
-// DD-45). Store externo como la sesión: las pantallas lo leen con `useSyncExternalStore`.
-import type { Comprobante, PendienteConfirmacion, SolicitudTransferencia } from '@billetera/shared';
+// DD-32, DD-45). Store externo como la sesión: las pantallas lo leen con `useSyncExternalStore`.
+import type {
+  Comprobante,
+  MotivoRechazo,
+  PendienteConfirmacion,
+  SolicitudTransferencia,
+  Transferencia,
+} from '@billetera/shared';
 import { mensajeDeProblema } from '@billetera/shared';
 import type { Cliente } from '../api/cliente';
 import { type Almacen, LLAVE_INTENTO } from '../auth/almacen';
 import type { Sesion } from '../auth/sesion';
 import type { Conexion } from './conexion';
-import type { Intento } from './intento';
+import { type Intento, type IntentoConfirmacion, interpretarIntento } from './intento';
 
 /** D-17: esperas antes de cada reintento. El primer envío sale de inmediato. */
 export const ESPERAS_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
@@ -22,7 +28,10 @@ export type EstadoMotor =
       transferenciaId: string;
       montoCentavos: number;
       codigoExpiraEn: string;
+      /** DD-25: del primer `202` o del intento guardado. */
       codigoSimulado?: string;
+      /** El motivo del último `422 codigo-incorrecto`, con los intentos restantes. */
+      error?: string;
     };
 
 type Peticion = {
@@ -35,7 +44,9 @@ type Peticion = {
 
 /** Cómo terminó una serie de reintentos. */
 type FinSerie =
-  { tipo: 'respuesta'; respuesta: Response } | { tipo: 'sin-sesion' } | { tipo: 'agotado' };
+  | { tipo: 'respuesta'; respuesta: Response; primerEnvio: boolean }
+  | { tipo: 'sin-sesion' }
+  | { tipo: 'agotado' };
 
 export type DependenciasMotor = {
   cliente: Cliente;
@@ -50,13 +61,50 @@ export type Motor = ReturnType<typeof crearMotor>;
 
 const INACTIVO: EstadoMotor = { tipo: 'inactivo' };
 
-async function tipoDeProblema(respuesta: Response): Promise<string> {
+type ProblemaLeido = { type: string; intentosRestantes?: number };
+
+async function leerProblema(respuesta: Response): Promise<ProblemaLeido> {
   try {
-    const cuerpo = (await respuesta.json()) as { type?: unknown };
-    return typeof cuerpo.type === 'string' ? cuerpo.type : 'internal-error';
+    const cuerpo = (await respuesta.json()) as { type?: unknown; intentosRestantes?: unknown };
+    return {
+      type: typeof cuerpo.type === 'string' ? cuerpo.type : 'internal-error',
+      ...(typeof cuerpo.intentosRestantes === 'number'
+        ? { intentosRestantes: cuerpo.intentosRestantes }
+        : {}),
+    };
   } catch {
-    return 'internal-error';
+    return { type: 'internal-error' };
   }
+}
+
+/** El `type` del problem de cada motivo es el motivo en kebab-case (design.md §7.2). */
+function mensajeDeMotivo(motivo: MotivoRechazo | null): string {
+  return mensajeDeProblema(
+    motivo === null ? 'internal-error' : motivo.toLowerCase().replaceAll('_', '-'),
+  );
+}
+
+/** DD-33: el mensaje del código incorrecto con los intentos que quedan. */
+function mensajeCodigoIncorrecto(restantes: number | undefined): string {
+  const base = mensajeDeProblema('codigo-incorrecto');
+  if (restantes === undefined) return base;
+  return `${base} Te ${restantes === 1 ? 'queda 1 intento' : `quedan ${restantes} intentos`}.`;
+}
+
+/** §6.2: el comprobante de una transferencia aplicada, armado con la respuesta del `GET`. */
+export function comprobanteDeTransferencia(t: Transferencia): Comprobante {
+  return {
+    transferenciaId: t.id,
+    estado: 'APLICADA',
+    tipo: t.tipo,
+    montoCentavos: t.montoCentavos,
+    concepto: t.concepto,
+    referencia: t.referencia,
+    origen: t.origen,
+    destino: t.destino,
+    creadaEn: t.creadaEn,
+    aplicadaEn: t.aplicadaEn ?? t.creadaEn,
+  };
 }
 
 export function crearMotor({
@@ -70,6 +118,11 @@ export function crearMotor({
   let intento: Intento | null = null;
   /** Lo que "Verificar de nuevo" repite: la misma petición, con la misma llave (R-4.30). */
   let repetir: (() => Promise<void>) | null = null;
+  /**
+   * DD-32: solo la respuesta al primer envío de un intento recién creado puede llevar directo a
+   * la captura del código. Cualquier otro `202` (reintento o reanudación) se contrasta con el GET.
+   */
+  let primerEnvio = false;
   const suscriptores = new Set<() => void>();
 
   function fijar(nuevo: EstadoMotor): void {
@@ -118,6 +171,8 @@ export function crearMotor({
       for (;;) {
         let respuesta: Response | null = null;
         let accessUsado: string | null = null;
+        const fuePrimero = primerEnvio;
+        primerEnvio = false;
         try {
           ({ respuesta, accessUsado } = await cliente.cruda(peticion.metodo, peticion.ruta, {
             path: peticion.path,
@@ -138,7 +193,7 @@ export function crearMotor({
           if (hayAccess === true) continue;
           if (hayAccess === false) return { tipo: 'sin-sesion' };
         } else if (respuesta !== null && respuesta.status < 500 && respuesta.status !== 401) {
-          return { tipo: 'respuesta', respuesta };
+          return { tipo: 'respuesta', respuesta, primerEnvio: fuePrimero };
         }
         break;
       }
@@ -160,8 +215,8 @@ export function crearMotor({
     }
   }
 
-  /** Resultado común: agotado, sin sesión o un rechazo definitivo (§13.3). */
-  async function terminarSinExito(fin: FinSerie): Promise<boolean> {
+  /** Resultado común: agotado o sin sesión (§13.3). */
+  function terminarSinExito(fin: FinSerie): fin is Exclude<FinSerie, { tipo: 'respuesta' }> {
     if (fin.tipo === 'agotado') {
       fijar({ tipo: 'desconocido' });
       return true;
@@ -177,44 +232,57 @@ export function crearMotor({
   }
 
   /** R-4.12 y §13.3: `422` u otro `4xx` es definitivo: borra el intento y muestra el motivo. */
-  async function rechazar(respuesta: Response): Promise<void> {
-    const mensaje = mensajeDeProblema(await tipoDeProblema(respuesta));
+  async function rechazar(problema: ProblemaLeido): Promise<void> {
     await borrar();
-    fijar({ tipo: 'rechazo', mensaje });
+    fijar({ tipo: 'rechazo', mensaje: mensajeDeProblema(problema.type) });
   }
 
+  async function aplicada(comprobante: Comprobante): Promise<void> {
+    await borrar();
+    fijar({ tipo: 'comprobante', comprobante });
+  }
+
+  /** `POST /transferencias` con la llave del intento (R-4.28, D-03). Nunca en fase `confirmacion`. */
   async function crear(): Promise<void> {
     const actual = intento;
-    if (actual === null) return;
+    if (actual === null || actual.fase !== 'creacion') return;
     const fin = await serie({
       metodo: 'post',
       ruta: '/transferencias',
       body: actual.cuerpo,
       headers: { 'Idempotency-Key': actual.llave },
     });
-    if (await terminarSinExito(fin)) return;
-    if (fin.tipo !== 'respuesta') return;
+    if (terminarSinExito(fin)) return;
     const { respuesta } = fin;
     if (respuesta.status === 201) {
-      const comprobante = (await respuesta.json()) as Comprobante;
-      await borrar();
-      fijar({ tipo: 'comprobante', comprobante });
+      await aplicada((await respuesta.json()) as Comprobante);
       return;
     }
     if (respuesta.status === 202) {
       const pendiente = (await respuesta.json()) as PendienteConfirmacion;
-      await mostrarCaptura(actual, pendiente);
+      // §6.2: con cualquier `202` el intento pasa a `confirmacion` antes de mostrar nada.
+      const confirmacion = await pasarAConfirmacion(actual, pendiente);
+      if (fin.primerEnvio) {
+        mostrarCaptura(confirmacion);
+        return;
+      }
+      // DD-32: un `202` de reintento no lleva directo a la captura; primero el estado real.
+      await verificarEstado();
       return;
     }
-    await rechazar(respuesta);
+    await rechazar(await leerProblema(respuesta));
   }
 
   /** §6.2: la fase `confirmacion` se guarda antes de mostrar la captura del código. */
-  async function mostrarCaptura(actual: Intento, pendiente: PendienteConfirmacion): Promise<void> {
+  async function pasarAConfirmacion(
+    actual: Intento,
+    pendiente: Pick<PendienteConfirmacion, 'transferenciaId' | 'codigoExpiraEn' | 'codigoSimulado'>,
+  ): Promise<IntentoConfirmacion> {
+    // DD-25: la repetición no trae `codigoSimulado`; se conserva el que se guardó.
     const codigoSimulado =
       pendiente.codigoSimulado ??
       (actual.fase === 'confirmacion' ? actual.codigoSimulado : undefined);
-    await guardar({
+    const confirmacion: IntentoConfirmacion = {
       usuarioId: actual.usuarioId,
       llave: actual.llave,
       cuerpo: actual.cuerpo,
@@ -222,15 +290,91 @@ export function crearMotor({
       transferenciaId: pendiente.transferenciaId,
       codigoExpiraEn: pendiente.codigoExpiraEn,
       ...(codigoSimulado === undefined ? {} : { codigoSimulado }),
-    });
+    };
+    await guardar(confirmacion);
+    return confirmacion;
+  }
+
+  function mostrarCaptura(confirmacion: IntentoConfirmacion, error?: string): void {
     repetir = null;
     fijar({
       tipo: 'codigo',
-      transferenciaId: pendiente.transferenciaId,
-      montoCentavos: pendiente.montoCentavos,
-      codigoExpiraEn: pendiente.codigoExpiraEn,
-      ...(codigoSimulado === undefined ? {} : { codigoSimulado }),
+      transferenciaId: confirmacion.transferenciaId,
+      montoCentavos: confirmacion.cuerpo.montoCentavos,
+      codigoExpiraEn: confirmacion.codigoExpiraEn,
+      ...(confirmacion.codigoSimulado === undefined
+        ? {}
+        : { codigoSimulado: confirmacion.codigoSimulado }),
+      ...(error === undefined ? {} : { error }),
     });
+  }
+
+  /**
+   * DD-32: `GET /transferencias/{id}`, que además aplica la expiración perezosa (R-6.12), y
+   * muestra el estado real: comprobante, rechazo o la captura con el `codigoExpiraEn` real.
+   */
+  async function verificarEstado(): Promise<void> {
+    const actual = intento;
+    if (actual === null || actual.fase !== 'confirmacion') return;
+    repetir = verificarEstado;
+    const fin = await serie({
+      metodo: 'get',
+      ruta: '/transferencias/{transferenciaId}',
+      path: { transferenciaId: actual.transferenciaId },
+    });
+    if (terminarSinExito(fin)) return;
+    const { respuesta } = fin;
+    if (respuesta.status !== 200) {
+      await rechazar(await leerProblema(respuesta));
+      return;
+    }
+    const t = (await respuesta.json()) as Transferencia;
+    if (t.estado === 'APLICADA') {
+      await aplicada(comprobanteDeTransferencia(t));
+      return;
+    }
+    if (t.estado === 'RECHAZADA') {
+      await borrar();
+      fijar({ tipo: 'rechazo', mensaje: mensajeDeMotivo(t.motivoRechazo) });
+      return;
+    }
+    const confirmacion = await pasarAConfirmacion(actual, {
+      transferenciaId: t.id,
+      codigoExpiraEn: t.codigoExpiraEn ?? actual.codigoExpiraEn,
+    });
+    mostrarCaptura(confirmacion);
+  }
+
+  /**
+   * §6.2: `POST /transferencias/{id}/confirmar` con el código guardado en el intento mientras
+   * está en vuelo. Es idempotente por el id (R-6.13), así que se reintenta igual que la creación.
+   */
+  async function confirmarCodigo(): Promise<void> {
+    const actual = intento;
+    if (actual === null || actual.fase !== 'confirmacion' || actual.codigo === undefined) return;
+    const fin = await serie({
+      metodo: 'post',
+      ruta: '/transferencias/{transferenciaId}/confirmar',
+      path: { transferenciaId: actual.transferenciaId },
+      body: { codigo: actual.codigo },
+    });
+    if (terminarSinExito(fin)) return;
+    const { respuesta } = fin;
+    if (respuesta.status === 201) {
+      await aplicada((await respuesta.json()) as Comprobante);
+      return;
+    }
+    const problema = await leerProblema(respuesta);
+    if (respuesta.status === 422 && problema.type === 'codigo-incorrecto') {
+      // §6.2: el código capturado se borra al recibir respuesta; el intento sigue pendiente.
+      const sinCodigo: IntentoConfirmacion = { ...actual };
+      delete sinCodigo.codigo;
+      await guardar(sinCodigo);
+      mostrarCaptura(sinCodigo, mensajeCodigoIncorrecto(problema.intentosRestantes));
+      return;
+    }
+    // R-6.15: cualquier otro `422` o `4xx` cierra el intento; volver a enviar exige otra llave.
+    await rechazar(problema);
   }
 
   return {
@@ -255,7 +399,44 @@ export function crearMotor({
       const usuarioId = sesion.usuarioActual();
       if (usuarioId === null) throw new Error('No se sabe de quién es el intento (R-1.12)');
       await guardar({ usuarioId, llave: generarLlave(), cuerpo, fase: 'creacion' });
+      primerEnvio = true;
       void correr(crear);
+    },
+
+    /**
+     * R-4.31: al entrar con sesión, resuelve el intento guardado antes de mostrar el saldo.
+     * Según la fase (§6.2): `creacion` reenvía la creación con la misma llave; `confirmacion` con
+     * código en vuelo reenvía la confirmación con ese código; sin código, consulta el GET. En
+     * fase `confirmacion` nunca se reenvía la creación. Un intento ajeno o ilegible se borra sin
+     * enviarlo (§13.3). Devuelve al terminar de decidir; la serie sigue en segundo plano.
+     */
+    async reanudar(): Promise<void> {
+      if (estado.tipo !== 'inactivo') return;
+      let crudo: string | null;
+      try {
+        crudo = await almacen.getItemAsync(LLAVE_INTENTO);
+      } catch {
+        return;
+      }
+      if (crudo === null) return;
+      const guardado = interpretarIntento(crudo, sesion.usuarioActual());
+      if (guardado === null) {
+        await almacen.deleteItemAsync(LLAVE_INTENTO);
+        return;
+      }
+      intento = guardado;
+      primerEnvio = false;
+      if (guardado.fase === 'creacion') void correr(crear);
+      else if (guardado.codigo !== undefined) void correr(confirmarCodigo);
+      else void correr(verificarEstado);
+    },
+
+    /** Captura del código: lo guarda en el intento **antes** de enviar la confirmación (§6.2). */
+    async confirmar(codigo: string): Promise<void> {
+      const actual = intento;
+      if (estado.tipo !== 'codigo' || actual === null || actual.fase !== 'confirmacion') return;
+      await guardar({ ...actual, codigo });
+      void correr(confirmarCodigo);
     },
 
     /** R-4.30: "Verificar de nuevo" reinicia la serie con la misma llave. */

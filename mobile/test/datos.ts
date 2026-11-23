@@ -7,6 +7,7 @@ import type {
   Movimiento,
   PendienteConfirmacion,
   SolicitudTransferencia,
+  Transferencia,
 } from '@billetera/shared';
 
 export const CUENTAS: Cuenta[] = [
@@ -89,3 +90,49 @@ export const PENDIENTE: PendienteConfirmacion = {
   codigoExpiraEn: '2026-11-22T18:35:00.000Z',
   codigoSimulado: '123456',
 };
+
+/** La respuesta de `GET /transferencias/{id}` en el estado dado (DD-32). */
+export function transferencia(
+  estado: Transferencia['estado'],
+  extras: Partial<Transferencia> = {},
+): Transferencia {
+  return {
+    id: TRANSFERENCIA,
+    estado,
+    tipo: 'TERCERO',
+    montoCentavos: 1_500_000,
+    concepto: 'Renta',
+    referencia: '1234567',
+    origen: COMPROBANTE.origen,
+    destino: COMPROBANTE.destino,
+    creadaEn: '2026-11-22T18:30:00.000Z',
+    aplicadaEn: estado === 'APLICADA' ? '2026-11-22T18:31:00.000Z' : null,
+    motivoRechazo: estado === 'RECHAZADA' ? 'CODIGO_EXPIRADO' : null,
+    codigoExpiraEn: estado === 'PENDIENTE_CONFIRMACION' ? '2026-11-22T18:40:00.000Z' : null,
+    ...extras,
+  };
+}
+
+export const LLAVE_GUARDADA = '66666666-6666-4666-8666-666666666666';
+
+/** El intento como lo guarda el motor en `billetera.intento` (§13.3). */
+export function intentoGuardado(extras: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    usuarioId: USUARIO,
+    llave: LLAVE_GUARDADA,
+    cuerpo: { ...CUERPO, montoCentavos: 1_500_000 },
+    fase: 'creacion',
+    ...extras,
+  });
+}
+
+/** Un intento en fase `confirmacion`, con el `codigoSimulado` del primer `202` (DD-25). */
+export function intentoEnConfirmacion(extras: Record<string, unknown> = {}): string {
+  return intentoGuardado({
+    fase: 'confirmacion',
+    transferenciaId: TRANSFERENCIA,
+    codigoExpiraEn: PENDIENTE.codigoExpiraEn,
+    codigoSimulado: '123456',
+    ...extras,
+  });
+}

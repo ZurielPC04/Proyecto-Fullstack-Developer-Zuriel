@@ -1,9 +1,17 @@
-// Estado de la transferencia (design.md §13.3, R-4.11, R-4.12, R-4.28, R-4.30): verificando,
+// Estado de la transferencia (design.md §13.3, R-4.11, R-4.12, R-4.28, R-4.30, R-6.18): verificando,
 // comprobante, rechazo, captura del código o "Estado desconocido". Nunca dice que la operación
 // no se hizo: si no hay respuesta, el resultado es desconocido (D-17).
-import { type Comprobante, formatearMXNSinIntl } from '@billetera/shared';
-import { useSyncExternalStore } from 'react';
-import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { type Comprobante, esquemaConfirmacion, formatearMXNSinIntl } from '@billetera/shared';
+import { useRef, useState, useSyncExternalStore } from 'react';
+import {
+  ActivityIndicator,
+  Button,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useApp } from '../contexto';
 import { formatearFecha } from '../formato/fecha';
 import type { EstadoMotor } from '../transferencia/motor';
@@ -63,19 +71,64 @@ function Contenido({ estado }: { estado: EstadoMotor }) {
         </View>
       );
     case 'codigo':
-      return (
-        <View style={estilos.bloque}>
-          <Text style={estilos.titulo}>Confirma con tu código</Text>
-          <Text>
-            La transferencia de {formatearMXNSinIntl(estado.montoCentavos)} necesita un código de
-            confirmación. Vence: {formatearFecha(estado.codigoExpiraEn)}.
-          </Text>
-          {estado.codigoSimulado ? (
-            <Text>Modo de prueba · código: {estado.codigoSimulado}</Text>
-          ) : null}
-        </View>
-      );
+      return <CapturaCodigo estado={estado} />;
   }
+}
+
+/** R-6.18: la captura del código, con el `codigoSimulado` guardado en modo de prueba (DD-25). */
+function CapturaCodigo({ estado }: { estado: Extract<EstadoMotor, { tipo: 'codigo' }> }) {
+  const { motor } = useApp();
+  const enVuelo = useRef(false);
+  const [codigo, setCodigo] = useState('');
+  const [errorCampo, setErrorCampo] = useState<string | null>(null);
+
+  async function confirmar() {
+    // Un segundo toque del mismo ciclo se descarta antes de cualquier setState (R-4.21).
+    if (enVuelo.current) return;
+    const resultado = esquemaConfirmacion.safeParse({ codigo: codigo.trim() });
+    if (!resultado.success) {
+      setErrorCampo(resultado.error.issues[0]?.message ?? 'Debe tener 6 dígitos.');
+      return;
+    }
+    enVuelo.current = true;
+    setErrorCampo(null);
+    try {
+      await motor.confirmar(resultado.data.codigo);
+    } finally {
+      enVuelo.current = false;
+    }
+  }
+
+  const error = errorCampo ?? estado.error ?? null;
+  return (
+    <View style={estilos.bloque}>
+      <Text style={estilos.titulo} accessibilityRole="header">
+        Confirma con tu código
+      </Text>
+      <Text>
+        La transferencia de {formatearMXNSinIntl(estado.montoCentavos)} necesita un código de
+        confirmación. Vence: {formatearFecha(estado.codigoExpiraEn)}.
+      </Text>
+      {estado.codigoSimulado ? <Text>Modo de prueba · código: {estado.codigoSimulado}</Text> : null}
+      <Text>Código</Text>
+      <TextInput
+        accessibilityLabel="Código"
+        style={estilos.campo}
+        value={codigo}
+        onChangeText={setCodigo}
+        keyboardType="number-pad"
+        maxLength={6}
+        autoComplete="one-time-code"
+        textContentType="oneTimeCode"
+      />
+      {error ? (
+        <Text accessibilityRole="alert" style={estilos.error}>
+          {error}
+        </Text>
+      ) : null}
+      <Button title="Confirmar" onPress={() => void confirmar()} />
+    </View>
+  );
 }
 
 function DetalleComprobante({ comprobante: c }: { comprobante: Comprobante }) {
@@ -99,4 +152,6 @@ const estilos = StyleSheet.create({
   contenedor: { padding: 16, gap: 12 },
   bloque: { gap: 8 },
   titulo: { fontSize: 18, fontWeight: '600' },
+  campo: { borderWidth: 1, borderColor: '#888', borderRadius: 6, padding: 10 },
+  error: { color: '#b00020' },
 });
